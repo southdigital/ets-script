@@ -11,10 +11,11 @@ function initETSLocationFinder() {
         const lat = parseFloat(cardEl.getAttribute('data-lat'));
         const lng = parseFloat(cardEl.getAttribute('data-lng'));
 
+        // Each card is inside a .w-dyn-item wrapper
         const itemWrapper = cardEl.closest('.w-dyn-item') || cardEl;
 
         const distanceWrapper = cardEl.querySelector('.distance-in-miles-wrapper');
-        const distanceTextEl = cardEl.querySelector('.distance-text'); // <div class="distance-text">
+        const distanceTextEl = cardEl.querySelector('.distance-text');
 
         const durationWrapper = cardEl.querySelector('.estimated-drie-time-wrapper');
         const durationTextEl = cardEl.querySelector('.estimated-drive-time-text');
@@ -29,7 +30,7 @@ function initETSLocationFinder() {
         distanceTextEl,
         durationWrapper,
         durationTextEl,
-        distanceValueMeters: null, // numeric distance for sorting
+        distanceValueMeters: null,
         distanceText: null,
         durationText: null
         };
@@ -37,7 +38,8 @@ function initETSLocationFinder() {
 
     if (!locations.length) return;
 
-    // --- 2) Utility: hide distance/time UI -----------------------------
+    // --- 2) Utility: hide / show distance & time ----------------------
+
     function hideDistanceUI() {
         locations.forEach(loc => {
         if (loc.distanceWrapper) loc.distanceWrapper.classList.add('d-none');
@@ -45,18 +47,25 @@ function initETSLocationFinder() {
         });
     }
 
+    function showDistanceForLocation(loc) {
+        if (loc.distanceWrapper) loc.distanceWrapper.classList.remove('d-none');
+        if (loc.durationWrapper) loc.durationWrapper.classList.remove('d-none');
+    }
+
+    // Start with whatever is in HTML (you’ve put d-none by default).
+    // We’ll only remove d-none after we have real data.
+
     // --- 3) Sorting DOM by distance -----------------------------------
+
     function sortLocationsByDistance() {
         if (!locationsContainer) return;
 
-        // Smallest distance first
         locations.sort((a, b) => {
         const da = typeof a.distanceValueMeters === 'number' ? a.distanceValueMeters : Number.POSITIVE_INFINITY;
         const db = typeof b.distanceValueMeters === 'number' ? b.distanceValueMeters : Number.POSITIVE_INFINITY;
         return da - db;
         });
 
-        // Re-append the .w-dyn-item wrappers in new order
         locations.forEach(loc => {
         if (loc.itemWrapper) {
             locationsContainer.appendChild(loc.itemWrapper);
@@ -67,27 +76,29 @@ function initETSLocationFinder() {
     }
 
     // --- 4) Distance Matrix: compute distance & drive time ------------
-    const MAX_DESTINATIONS_PER_REQUEST = 25; // per Distance Matrix limits
+
+    const MAX_DESTINATIONS_PER_REQUEST = 25;
     const distanceService = new google.maps.DistanceMatrixService();
 
-    async function calculateAndApplyDistances(userLat, userLng) {
+    /**
+     * origin can be a google.maps.LatLng (geolocation) or any LatLng-like.
+     */
+    async function calculateAndApplyDistances(originLatLng) {
         if (!locations.length) return;
 
-        const origin = new google.maps.LatLng(userLat, userLng);
         const promises = [];
 
         for (let i = 0; i < locations.length; i += MAX_DESTINATIONS_PER_REQUEST) {
         const chunk = locations.slice(i, i + MAX_DESTINATIONS_PER_REQUEST);
         const destinations = chunk.map(loc => new google.maps.LatLng(loc.lat, loc.lng));
 
-        // Wrap DistanceMatrixService callback into a Promise
         const p = new Promise((resolve, reject) => {
             distanceService.getDistanceMatrix(
             {
-                origins: [origin],
+                origins: [originLatLng],
                 destinations,
                 travelMode: google.maps.TravelMode.DRIVING,
-                unitSystem: google.maps.UnitSystem.IMPERIAL // miles
+                unitSystem: google.maps.UnitSystem.IMPERIAL
             },
             (response, status) => {
                 if (status !== 'OK') {
@@ -113,8 +124,8 @@ function initETSLocationFinder() {
             if (!loc) return;
 
             if (el.status === 'OK') {
-                const distanceText = el.distance.text; // e.g. "12.3 mi"
-                const durationText = el.duration.text; // e.g. "25 mins"
+                const distanceText = el.distance.text;
+                const durationText = el.duration.text;
 
                 loc.distanceValueMeters = el.distance.value;
                 loc.distanceText = distanceText;
@@ -127,11 +138,13 @@ function initETSLocationFinder() {
                 loc.durationTextEl.textContent = durationText;
                 }
 
-                // Ensure visible (user might have denied earlier)
-                if (loc.distanceWrapper) loc.distanceWrapper.classList.remove('d-none');
-                if (loc.durationWrapper) loc.durationWrapper.classList.remove('d-none');
+                // We now have valid data: show wrappers
+                showDistanceForLocation(loc);
             } else {
+                // No distance – keep them hidden for this location
                 loc.distanceValueMeters = Number.POSITIVE_INFINITY;
+                if (loc.distanceWrapper) loc.distanceWrapper.classList.add('d-none');
+                if (loc.durationWrapper) loc.durationWrapper.classList.add('d-none');
             }
             });
         });
@@ -139,66 +152,107 @@ function initETSLocationFinder() {
         sortLocationsByDistance();
         } catch (err) {
         console.error('Distance Matrix error:', err);
+        // On total failure, hide everything again
         hideDistanceUI();
         }
     }
 
-    // --- 5) Geolocation: "Use current location" -----------------------
+    // --- 5) Geolocation handlers (page-load + "Use current location") -
 
-    // This is the row with the map-pin icon + "Use current location" text
-    const useCurrentLocationRow = document.querySelector(
-        '.find_ets-location-searchbox .flex.align-center.gap-6.margin-top-tiny'
-    );
+    function handleGeolocationSuccess(position) {
+        const { latitude, longitude } = position.coords;
+        const originLatLng = new google.maps.LatLng(latitude, longitude);
+        calculateAndApplyDistances(originLatLng);
+    }
 
-    if (useCurrentLocationRow && 'geolocation' in navigator) {
-        useCurrentLocationRow.style.cursor = 'pointer';
+    function handleGeolocationError(error) {
+        console.warn('Geolocation error:', error);
+        // User denied or error – distance & time stay hidden
+        hideDistanceUI();
+    }
 
-        useCurrentLocationRow.addEventListener('click', () => {
+    function tryGeolocateAndCalculate() {
+        if (!('geolocation' in navigator)) {
+        hideDistanceUI();
+        return;
+        }
+
         navigator.geolocation.getCurrentPosition(
-            position => {
-            const { latitude, longitude } = position.coords;
-            calculateAndApplyDistances(latitude, longitude);
-            },
-            error => {
-            console.warn('Geolocation error:', error);
-            // User denied or error – hide distance/time and leave sorting as-is
-            hideDistanceUI();
-            },
-            {
+        handleGeolocationSuccess,
+        handleGeolocationError,
+        {
             enableHighAccuracy: false,
             timeout: 10000,
             maximumAge: 300000
-            }
-        );
-        });
-    } else {
-        // If geolocation is not available at all, hide distance/time
-        if (!('geolocation' in navigator)) {
-        hideDistanceUI();
         }
+        );
     }
 
-    // --- 6) Places Autocomplete (US only) for the search bar ----------
+    // 🔔 Ask for location ON LOAD
+    if ('geolocation' in navigator) {
+        tryGeolocateAndCalculate();
+    } else {
+        hideDistanceUI();
+    }
+
+    // 🧭 "Use current location" click
+    const useCurrentLocationRow = document.querySelector(
+        '.find_ets-location-searchbox .flex.align-center.gap-6.margin-top-tiny'
+    );
+    if (useCurrentLocationRow && 'geolocation' in navigator) {
+        useCurrentLocationRow.style.cursor = 'pointer';
+        useCurrentLocationRow.addEventListener('click', () => {
+        tryGeolocateAndCalculate();
+        });
+    }
+
+    // --- 6) Places Autocomplete (US-only) + Search button --------------
 
     const searchInput = document.getElementById('location-or-zipcode');
+    const searchForm = document.getElementById('email-form');
 
+    let autocomplete = null;
     if (searchInput && google.maps.places) {
-        const autocomplete = new google.maps.places.Autocomplete(searchInput, {
+        autocomplete = new google.maps.places.Autocomplete(searchInput, {
         types: ['geocode'],
         componentRestrictions: { country: 'us' }
         });
+        // We keep suggestions, but we won’t rely on place_changed.
+        // The real trigger is the Search button / form submit.
+    }
 
-        autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        if (!place || !place.geometry || !place.geometry.location) {
+    const geocoder = new google.maps.Geocoder();
+
+    function geocodeAndCalculateFromQuery(query) {
+        geocoder.geocode(
+        {
+            address: query,
+            componentRestrictions: { country: 'US' }
+        },
+        (results, status) => {
+            if (status === 'OK' && results[0] && results[0].geometry && results[0].geometry.location) {
+            const location = results[0].geometry.location;
+            calculateAndApplyDistances(location);
+            } else {
+            console.warn('Geocoding failed:', status);
+            // Don’t change existing distances in this case.
+            }
+        }
+        );
+    }
+
+    if (searchForm && searchInput) {
+        searchForm.addEventListener('submit', event => {
+        event.preventDefault();
+
+        const query = searchInput.value.trim();
+        if (!query) {
+            // Do nothing if input is empty
             return;
         }
 
-        const userLat = place.geometry.location.lat();
-        const userLng = place.geometry.location.lng();
-
-        // Use selected place as "user location" for distances
-        calculateAndApplyDistances(userLat, userLng);
+        // Use query string (could be ZIP or address) -> geocode -> distances
+        geocodeAndCalculateFromQuery(query);
         });
     }
 }
