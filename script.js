@@ -118,7 +118,7 @@
       } else {
         map = new mapboxgl.Map({
           container: 'heatmap',
-          style: 'mapbox://styles/mapbox/streets-v12',
+          style: 'mapbox://styles/mapbox/dark-v11',
           center: [-98.5795, 39.8283],
           zoom: 3
         });
