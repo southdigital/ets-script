@@ -206,10 +206,10 @@ function initETSLocationFinder() {
         });
     }
 
-    // --- 6) Places Autocomplete (US-only) + Search button --------------
 
     const searchInput = document.getElementById('location-or-zipcode');
     const searchForm = document.getElementById('email-form');
+    const searchButton = document.querySelector('.form-find-gym .w-button');
 
     let autocomplete = null;
     if (searchInput && google.maps.places) {
@@ -241,18 +241,28 @@ function initETSLocationFinder() {
         );
     }
 
-    if (searchForm && searchInput) {
-        searchForm.addEventListener('submit', event => {
-        event.preventDefault();
+    // --- SEARCH BUTTON CLICK HANDLER (NO FORM SUBMISSION) ---
 
-        const query = searchInput.value.trim();
-        if (!query) {
-            // Do nothing if input is empty
-            return;
-        }
-
-        // Use query string (could be ZIP or address) -> geocode -> distances
-        geocodeAndCalculateFromQuery(query);
-        });
+    if (searchForm) {
+    // Disable Webflow automatic submission entirely
+    searchForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        return false; // stop Webflow default
+    });
     }
+
+    function handleSearchButtonClick(e) {
+    e.preventDefault(); // stop Webflow’s form submit
+    e.stopPropagation();
+
+    const query = searchInput.value.trim();
+    if (!query) return;
+
+    geocodeAndCalculateFromQuery(query);
+    }
+
+    if (searchButton) {
+        searchButton.addEventListener('click', handleSearchButtonClick);
+    }
+
 }
