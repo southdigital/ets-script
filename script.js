@@ -424,7 +424,7 @@ function initETSLocationFinder() {
         bounds.extend([lastUserLngLat.lng, lastUserLngLat.lat]);
         bounds.extend([nearest.lng, nearest.lat]);
 
-        map.fitBounds(bounds, { padding: 80, maxZoom: 11 });
+        map.fitBounds(bounds, { padding: 80, maxZoom: 8 });
 
         if (opts.autoSelectNearest) {
           selectLocation(nearest.id, {
