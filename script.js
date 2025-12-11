@@ -14,8 +14,7 @@ function initETSLocationFinder() {
   let lastUserLngLat = null;
   let activeLocationId = null;
   let activePopup = null;
-  // NEW: track whether the last geolocation attempt came from "Use current location"
-  let lastGeolocateWasUserAction = false;
+  let lastGeolocateWasUserAction = false; // track "Use current location" clicks
 
   // --- 1) Build locations array from DOM -----------------------------
   const locationCardEls = locationsContainer.querySelectorAll('.location-item');
@@ -107,6 +106,56 @@ function initETSLocationFinder() {
     }
   }
 
+  // --- 3b) Center on area with most gyms ----------------------------
+
+  function centerMapOnDensestArea() {
+    if (!map || !locations.length) return;
+
+    // Bucket locations into a 1-degree lat/lng grid and pick the densest cell
+    const cellSize = 1; // degrees
+    const grid = new Map();
+
+    locations.forEach(loc => {
+      if (!loc.lat || !loc.lng) return;
+      const cellLat = Math.floor(loc.lat / cellSize);
+      const cellLng = Math.floor(loc.lng / cellSize);
+      const key = cellLat + ',' + cellLng;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(loc);
+    });
+
+    let bestCellLocations = null;
+    let bestCount = 0;
+
+    grid.forEach(cellLocs => {
+      if (cellLocs.length > bestCount) {
+        bestCount = cellLocs.length;
+        bestCellLocations = cellLocs;
+      }
+    });
+
+    // Prefer densest cluster; fallback to all locations
+    const targetLocs = bestCellLocations && bestCellLocations.length ? bestCellLocations : locations;
+
+    let bounds = null;
+    targetLocs.forEach(loc => {
+      if (!loc.lat || !loc.lng) return;
+      const coord = [loc.lng, loc.lat];
+      if (!bounds) {
+        bounds = new mapboxgl.LngLatBounds(coord, coord);
+      } else {
+        bounds.extend(coord);
+      }
+    });
+
+    if (bounds) {
+      map.fitBounds(bounds, {
+        padding: 60,
+        maxZoom: 9 // zoomed into area with most gyms
+      });
+    }
+  }
+
   // --- 4) Mapbox initialization -------------------------------------
 
   if (!window.mapboxgl) {
@@ -128,27 +177,14 @@ function initETSLocationFinder() {
       map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
       map.on('load', function () {
-        // Fit bounds to all locations
-        let bounds = null;
-        locations.forEach(loc => {
-          if (!loc.lng || !loc.lat) return;
-          const coord = [loc.lng, loc.lat];
-          if (!bounds) {
-            bounds = new mapboxgl.LngLatBounds(coord, coord);
-          } else {
-            bounds.extend(coord);
-          }
-        });
-        if (bounds) {
-          map.fitBounds(bounds, { padding: 60, maxZoom: 10 });
-        }
-
+        // First load: center on area that has the most gyms
+        centerMapOnDensestArea();
         createMarkersAndWireCards();
       });
     }
   }
 
-  // --- 5) Selection / syncing (cards <-> markers) -------------------
+  // --- 5) Selection / syncing (markers -> cards) --------------------
 
   function buildPopupHTML(loc) {
     return `
@@ -169,7 +205,9 @@ function initETSLocationFinder() {
         flyTo: true,
         openPopup: true,
         scrollToCard: false,
-        bringToTop: false
+        bringToTop: false,
+        setCardActive: true,   // control whether card gets "is-active"
+        setMarkerActive: true  // control whether marker gets "is-active"
       },
       options || {}
     );
@@ -177,7 +215,7 @@ function initETSLocationFinder() {
     const loc = locations.find(l => l.id === locationId);
     if (!loc || !map) return;
 
-    // Clear previous active
+    // Clear previous active visuals
     if (activeLocationId !== null && activeLocationId !== locationId) {
       const prev = locations.find(l => l.id === activeLocationId);
       if (prev) {
@@ -190,13 +228,23 @@ function initETSLocationFinder() {
 
     activeLocationId = locationId;
 
-    // Highlight card & marker
-    loc.cardEl.classList.add('is-active');
-    if (loc.marker && loc.marker.getElement()) {
-      loc.marker.getElement().classList.add('is-active');
+    // Card & marker "active" styles
+    if (opts.setCardActive) {
+      loc.cardEl.classList.add('is-active');
+    } else {
+      // Ensure we don't leave stray active state on this card
+      loc.cardEl.classList.remove('is-active');
     }
 
-    // Move card to top if requested
+    if (loc.marker && loc.marker.getElement()) {
+      if (opts.setMarkerActive) {
+        loc.marker.getElement().classList.add('is-active');
+      } else {
+        loc.marker.getElement().classList.remove('is-active');
+      }
+    }
+
+    // Bring card to top in list if requested
     if (opts.bringToTop) {
       bringCardToTop(loc);
     }
@@ -206,7 +254,7 @@ function initETSLocationFinder() {
       loc.marker.getPopup().setHTML(buildPopupHTML(loc));
     }
 
-    // Fly map to center on this location
+    // Fly map to this location (center it)
     if (opts.flyTo && loc.lat && loc.lng) {
       map.flyTo({
         center: [loc.lng, loc.lat],
@@ -226,7 +274,7 @@ function initETSLocationFinder() {
       activePopup.addTo(map);
     }
 
-    // (We keep scrollToCard here but we never pass true anywhere)
+    // We NEVER pass scrollToCard: true anywhere, but keeping it for future
     if (opts.scrollToCard) {
       loc.cardEl.scrollIntoView({
         behavior: 'smooth',
@@ -259,32 +307,29 @@ function initETSLocationFinder() {
 
       loc.marker = marker;
 
-      // PIN CLICK: center map on marker, no page scroll, keep sort order
+      // MARKER CLICK:
+      // - fly to the gym (center map)
+      // - bring that card to top of the list
+      // - DO NOT scroll the page
+      // - DO NOT mark card as "active"
       markerEl.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
+
         selectLocation(loc.id, {
           flyTo: true,
           openPopup: true,
           scrollToCard: false,
-          bringToTop: false // <--- changed from true
+          bringToTop: true,
+          setCardActive: false,  // <-- card is moved but not styled as active
+          setMarkerActive: true
         });
       });
     });
 
-    // CARD CLICK: flyTo + popup, no DOM reordering, no page scroll
+    // REMOVE CARD CLICK: no click handlers, no scroll
     locations.forEach(loc => {
-      loc.cardEl.style.cursor = 'pointer';
-      loc.cardEl.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        selectLocation(loc.id, {
-          flyTo: true,
-          openPopup: true,
-          scrollToCard: false,
-          bringToTop: false
-        });
-      });
+      loc.cardEl.style.cursor = 'default';
     });
   }
 
@@ -293,12 +338,11 @@ function initETSLocationFinder() {
   const MAX_DESTINATIONS_PER_REQUEST = 25;
   const distanceService = new google.maps.DistanceMatrixService();
 
-  // NEW: options lets us control behaviour for geolocation vs search
   async function calculateAndApplyDistances(originLatLng, options) {
     const opts = Object.assign(
       {
-        autoSelectNearest: true,      // select nearest & open popup?
-        fitMapToUserAndNearest: true  // fit bounds around user + nearest?
+        autoSelectNearest: true,
+        fitMapToUserAndNearest: true
       },
       options || {}
     );
@@ -371,10 +415,9 @@ function initETSLocationFinder() {
         });
       });
 
-      // Sort by distance (this stays as-is)
+      // Keep sorting as-is: nearest on top by distance
       sortLocationsByDistance();
 
-      // Optionally zoom between user location & nearest gym and auto-select it
       if (map && lastUserLngLat && locations.length && opts.fitMapToUserAndNearest) {
         const nearest = locations[0];
         const bounds = new mapboxgl.LngLatBounds();
@@ -385,10 +428,12 @@ function initETSLocationFinder() {
 
         if (opts.autoSelectNearest) {
           selectLocation(nearest.id, {
-            flyTo: false,   // fitBounds already moved camera
+            flyTo: false,        // fitBounds already moved camera
             openPopup: true,
             scrollToCard: false,
-            bringToTop: false
+            bringToTop: false,
+            setCardActive: true,
+            setMarkerActive: true
           });
         }
       }
@@ -414,19 +459,42 @@ function initETSLocationFinder() {
     }
   }
 
+  // Rough US bounding boxes (contiguous US + AK + HI)
+  function isInUSA(lat, lng) {
+    const inLower48 = lat >= 24 && lat <= 50 && lng >= -125 && lng <= -66;
+    const inAlaska = lat >= 51 && lat <= 72 && lng >= -170 && lng <= -129;
+    const inHawaii = lat >= 18 && lat <= 23 && lng >= -161 && lng <= -154;
+    return inLower48 || inAlaska || inHawaii;
+  }
+
   function handleGeolocationSuccess(position) {
     const { latitude, longitude } = position.coords;
+
+    // If user explicitly clicked "Use current location" but is outside US
+    if (lastGeolocateWasUserAction && !isInUSA(latitude, longitude)) {
+      alert(
+        'It looks like you are currently outside the United States. To find an ETS Gym, please enter a U.S. city or ZIP code in the search bar.'
+      );
+      lastGeolocateWasUserAction = false;
+      return;
+    }
 
     updateUserLocationMarker(latitude, longitude);
 
     const originLatLng = new google.maps.LatLng(latitude, longitude);
-    // For geolocation: keep current behaviour (nearest auto-selected, popup, etc.)
+
+    // For auto-on-load geolocation: keep map centered on "most gyms"
+    // For explicit "Use current location": center between user + nearest
     calculateAndApplyDistances(originLatLng, {
       autoSelectNearest: true,
-      fitMapToUserAndNearest: true
+      fitMapToUserAndNearest: lastGeolocateWasUserAction
     });
 
-    // reset flag after this attempt finishes
+    // Success notification ONLY when user tapped "Use current location"
+    if (lastGeolocateWasUserAction) {
+      alert('Showing ETS locations near your current location.');
+    }
+
     lastGeolocateWasUserAction = false;
   }
 
@@ -434,14 +502,12 @@ function initETSLocationFinder() {
     console.warn('Geolocation error:', error);
     hideDistanceUI();
 
-    // Only show alert when the user explicitly clicked "Use current location"
     if (error && error.code === error.PERMISSION_DENIED && lastGeolocateWasUserAction) {
       alert(
         'We are unable to access your location. To find an ETS Gym near you, please turn on location services or manually enter your location in the search bar.'
       );
     }
 
-    // reset flag
     lastGeolocateWasUserAction = false;
   }
 
@@ -469,7 +535,7 @@ function initETSLocationFinder() {
     );
   }
 
-  // Ask for location ON LOAD (distance + sorting) – silent on error
+  // Ask for location ON LOAD (distance + sorting), but don't move map
   if ('geolocation' in navigator) {
     tryGeolocateAndCalculate(false);
   } else {
@@ -518,7 +584,7 @@ function initETSLocationFinder() {
 
           updateUserLocationMarker(userLat, userLng);
 
-          // For manual search: just fly to the searched area and center it
+          // For manual search: fly to the searched area and center it
           if (map) {
             map.flyTo({
               center: [userLng, userLat],
@@ -529,7 +595,7 @@ function initETSLocationFinder() {
             });
           }
 
-          // Recalculate distances and sort, but do NOT auto-select / scroll / open popup
+          // Recalculate distances & sort, but do NOT auto-select / popup
           calculateAndApplyDistances(location, {
             autoSelectNearest: false,
             fitMapToUserAndNearest: false
@@ -565,7 +631,7 @@ function initETSLocationFinder() {
   }
 
   if (searchInput) {
-    // Enter key triggers search without form submit (no page scroll)
+    // Enter key triggers search without form submit
     searchInput.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         e.preventDefault();
