@@ -289,10 +289,10 @@ function initETSLocationFinder() {
     locations.forEach(loc => {
       if (!loc.lng || !loc.lat) return;
 
-      const markerEl = document.createElement('button');
+      const markerEl = document.createElement('img');
+      markerEl.src = 'https://cdn.prod.website-files.com/68f9dd01a660a09f46b08cb1/692e9fb0f13b7e4c83995eba_high-res-logo-ets-p-3200.png';   // <-- your logo file here
       markerEl.className = 'ets-map-marker';
-      markerEl.type = 'button';
-      markerEl.setAttribute('aria-label', loc.name || 'Location');
+      markerEl.alt = loc.name || 'Location';
 
       const popup = new mapboxgl.Popup({
         offset: 24,
