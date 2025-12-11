@@ -169,62 +169,42 @@ function initETSNearest() {
 
 
 // Find nearest Locations on Load
-
 (function(){
   const NETLIFY_URL = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
 
   document.addEventListener("DOMContentLoaded", function () {
-    console.log("[ETS-AUTO] DOM ready, requesting geolocation…");
+    if (!("geolocation" in navigator)) return;
 
-    if (!("geolocation" in navigator)) {
-      console.warn("[ETS-AUTO] Geolocation not supported. Skipping.");
-      return;
-    }
-
-    // Ask for permission by calling getCurrentPosition
     setLoading(true);
     navigator.geolocation.getCurrentPosition(
       async function onSuccess(pos){
         try {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
-          console.log("[ETS-AUTO] Got coords:", {lat, lng});
 
           const res = await fetch(NETLIFY_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ lat, lng, limit: 3 })
           });
-
-          console.log("[ETS-AUTO] status:", res.status);
           const data = await res.json();
-          console.log("[ETS-AUTO] body:", data);
-
-          if (!res.ok) {
-            throw new Error(data && data.error ? data.error : "Nearest lookup failed");
-          }
+          if (!res.ok) throw new Error(data && data.error ? data.error : "Nearest lookup failed");
 
           applyResultsToDom(data.items || []);
         } catch (err) {
-          console.error("[ETS-AUTO] ERROR:", err);
+          console.error("[ETS-AUTO]", err);
         } finally {
           setLoading(false);
         }
       },
-      function onError(err){
-        // User denied or other error → do nothing
-        console.warn("[ETS-AUTO] Geolocation error/denied:", err && err.message);
-        setLoading(false);
+      function onError(){
+        setLoading(false); // user denied → leave defaults
       },
-      {
-        enableHighAccuracy: false,
-        timeout: 8000,
-        maximumAge: 300000
-      }
+      { enableHighAccuracy:false, timeout:8000, maximumAge:300000 }
     );
   });
 
-  // ---- Loading UI (fade list only) ----
+  /* -------- UI helpers -------- */
   function setLoading(isLoading){
     const box = document.querySelector(".locations-listing-main-box");
     if (!box) return;
@@ -232,9 +212,29 @@ function initETSNearest() {
     box.style.opacity = isLoading ? "0.3" : "1";
   }
 
-  // ---- DOM patchers (same behavior as before) ----
+  function showEl(el){
+    if (!el) return;
+    el.classList.remove("d-none");
+    el.removeAttribute("hidden");
+    el.style.display = ""; // let CSS handle display
+  }
+  function hideEl(el){
+    if (!el) return;
+    el.classList.add("d-none");
+  }
+  function ensureText(el, selector, text){
+    if (!el) return;
+    let t = el.querySelector(selector);
+    if (!t) {
+      t = document.createElement("div");
+      t.className = selector.replace(".", "");
+      el.appendChild(t);
+    }
+    t.textContent = text || "";
+  }
+
+  /* -------- DOM patchers -------- */
   function applyResultsToDom(items){
-    console.log("[ETS-AUTO] applyResultsToDom", items);
     const primary = document.querySelector(".top-location-card");
     const seconds = Array.prototype.slice.call(document.querySelectorAll(".secondary-locations .location-content-sec"));
 
@@ -244,30 +244,33 @@ function initETSNearest() {
   }
 
   function updatePrimaryCard(card, data){
+    // image
     const img = card.querySelector(".location-thumbnail-wrapper img.location-thumbnail");
     if (img && data.image) { img.src = data.image; img.srcset=""; img.sizes=""; img.alt = data.name || "Location"; }
 
+    // name
     const h = card.querySelector("h3");
     if (h) h.textContent = data.name || "";
 
+    // distance
     const distWrap = card.querySelector(".distance-in-miles-wrapper");
-    if (distWrap){
-      distWrap.classList.remove("d-none");
-      const t = distWrap.querySelector(".text-size-regular");
-      if (t) t.textContent = data.distanceText || "";
+    if (data.distanceText) {
+      showEl(distWrap);
+      ensureText(distWrap, ".text-size-regular", data.distanceText);
+    } else {
+      hideEl(distWrap);
     }
 
+    // ETA (note class is 'estimated-drie-time-wrapper' per your DOM)
     const etaWrap = card.querySelector(".estimated-drie-time-wrapper");
-    if (etaWrap){
-      if (data.durationText){
-        etaWrap.classList.remove("d-none");
-        const t2 = etaWrap.querySelector(".text-size-regular");
-        if (t2) t2.textContent = data.durationText;
-      } else {
-        etaWrap.classList.add("d-none");
-      }
+    if (data.durationText) {
+      showEl(etaWrap);
+      ensureText(etaWrap, ".text-size-regular", data.durationText);
+    } else {
+      hideEl(etaWrap);
     }
 
+    // buttons
     const btns = Array.prototype.slice.call(card.querySelectorAll(".button"));
     btns.forEach(function(a){
       const label = (a.textContent || "").toLowerCase();
@@ -281,21 +284,19 @@ function initETSNearest() {
     if (h) h.textContent = data.name || "";
 
     const distWrap = card.querySelector(".distance-in-miles-wrapper");
-    if (distWrap){
-      distWrap.classList.remove("d-none");
-      const t = distWrap.querySelector(".text-size-regular");
-      if (t) t.textContent = data.distanceText || "";
+    if (data.distanceText) {
+      showEl(distWrap);
+      ensureText(distWrap, ".text-size-regular", data.distanceText);
+    } else {
+      hideEl(distWrap);
     }
 
     const etaWrap = card.querySelector(".estimated-drie-time-wrapper");
-    if (etaWrap){
-      if (data.durationText){
-        etaWrap.classList.remove("d-none");
-        const t2 = etaWrap.querySelector(".text-size-regular");
-        if (t2) t2.textContent = data.durationText;
-      } else {
-        etaWrap.classList.add("d-none");
-      }
+    if (data.durationText) {
+      showEl(etaWrap);
+      ensureText(etaWrap, ".text-size-regular", data.durationText);
+    } else {
+      hideEl(etaWrap);
     }
 
     const detailsBtn = card.querySelector(".button");
