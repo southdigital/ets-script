@@ -1,6 +1,3 @@
-<script async defer
-  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBh_TeVoplznorINcTO5QAAi1kgBwtd7jk&libraries=places&callback=initETSNearest">
-</script>
 function initETSNearest() {
   // Ensure we run after Webflow binds its handlers
   (window.Webflow = window.Webflow || []).push(function () {
