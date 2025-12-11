@@ -424,7 +424,7 @@ function initETSLocationFinder() {
         bounds.extend([lastUserLngLat.lng, lastUserLngLat.lat]);
         bounds.extend([nearest.lng, nearest.lat]);
 
-        map.fitBounds(bounds, { padding: 80, maxZoom: 4 });
+        map.fitBounds(bounds, { padding: 40, maxZoom: 11 });
 
         if (opts.autoSelectNearest) {
           selectLocation(nearest.id, {
@@ -588,7 +588,7 @@ function initETSLocationFinder() {
           if (map) {
             map.flyTo({
               center: [userLng, userLat],
-              zoom: 11,
+              zoom: 6,
               speed: 1.4,
               curve: 1.4,
               essential: true
