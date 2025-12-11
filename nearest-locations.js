@@ -166,3 +166,139 @@ function initETSNearest() {
 
   console.log("[ETS] wired: click-only, immediate disable, Searching… label.");
 }
+
+
+// Find nearest Locations on Load
+
+(function(){
+  const NETLIFY_URL = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
+
+  document.addEventListener("DOMContentLoaded", function () {
+    console.log("[ETS-AUTO] DOM ready, requesting geolocation…");
+
+    if (!("geolocation" in navigator)) {
+      console.warn("[ETS-AUTO] Geolocation not supported. Skipping.");
+      return;
+    }
+
+    // Ask for permission by calling getCurrentPosition
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async function onSuccess(pos){
+        try {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          console.log("[ETS-AUTO] Got coords:", {lat, lng});
+
+          const res = await fetch(NETLIFY_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lat, lng, limit: 3 })
+          });
+
+          console.log("[ETS-AUTO] status:", res.status);
+          const data = await res.json();
+          console.log("[ETS-AUTO] body:", data);
+
+          if (!res.ok) {
+            throw new Error(data && data.error ? data.error : "Nearest lookup failed");
+          }
+
+          applyResultsToDom(data.items || []);
+        } catch (err) {
+          console.error("[ETS-AUTO] ERROR:", err);
+        } finally {
+          setLoading(false);
+        }
+      },
+      function onError(err){
+        // User denied or other error → do nothing
+        console.warn("[ETS-AUTO] Geolocation error/denied:", err && err.message);
+        setLoading(false);
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 8000,
+        maximumAge: 300000
+      }
+    );
+  });
+
+  // ---- Loading UI (fade list only) ----
+  function setLoading(isLoading){
+    const box = document.querySelector(".locations-listing-main-box");
+    if (!box) return;
+    box.style.transition = "opacity 180ms ease";
+    box.style.opacity = isLoading ? "0.3" : "1";
+  }
+
+  // ---- DOM patchers (same behavior as before) ----
+  function applyResultsToDom(items){
+    console.log("[ETS-AUTO] applyResultsToDom", items);
+    const primary = document.querySelector(".top-location-card");
+    const seconds = Array.prototype.slice.call(document.querySelectorAll(".secondary-locations .location-content-sec"));
+
+    if (primary && items[0]) updatePrimaryCard(primary, items[0]);
+    if (seconds[0] && items[1]) updateSecondaryCard(seconds[0], items[1]);
+    if (seconds[1] && items[2]) updateSecondaryCard(seconds[1], items[2]);
+  }
+
+  function updatePrimaryCard(card, data){
+    const img = card.querySelector(".location-thumbnail-wrapper img.location-thumbnail");
+    if (img && data.image) { img.src = data.image; img.srcset=""; img.sizes=""; img.alt = data.name || "Location"; }
+
+    const h = card.querySelector("h3");
+    if (h) h.textContent = data.name || "";
+
+    const distWrap = card.querySelector(".distance-in-miles-wrapper");
+    if (distWrap){
+      distWrap.classList.remove("d-none");
+      const t = distWrap.querySelector(".text-size-regular");
+      if (t) t.textContent = data.distanceText || "";
+    }
+
+    const etaWrap = card.querySelector(".estimated-drie-time-wrapper");
+    if (etaWrap){
+      if (data.durationText){
+        etaWrap.classList.remove("d-none");
+        const t2 = etaWrap.querySelector(".text-size-regular");
+        if (t2) t2.textContent = data.durationText;
+      } else {
+        etaWrap.classList.add("d-none");
+      }
+    }
+
+    const btns = Array.prototype.slice.call(card.querySelectorAll(".button"));
+    btns.forEach(function(a){
+      const label = (a.textContent || "").toLowerCase();
+      if (label.indexOf("book")   > -1) a.href = data.bookUrl || "#";
+      if (label.indexOf("detail") > -1) a.href = data.detailsUrl || "#";
+    });
+  }
+
+  function updateSecondaryCard(card, data){
+    const h = card.querySelector("h3");
+    if (h) h.textContent = data.name || "";
+
+    const distWrap = card.querySelector(".distance-in-miles-wrapper");
+    if (distWrap){
+      distWrap.classList.remove("d-none");
+      const t = distWrap.querySelector(".text-size-regular");
+      if (t) t.textContent = data.distanceText || "";
+    }
+
+    const etaWrap = card.querySelector(".estimated-drie-time-wrapper");
+    if (etaWrap){
+      if (data.durationText){
+        etaWrap.classList.remove("d-none");
+        const t2 = etaWrap.querySelector(".text-size-regular");
+        if (t2) t2.textContent = data.durationText;
+      } else {
+        etaWrap.classList.add("d-none");
+      }
+    }
+
+    const detailsBtn = card.querySelector(".button");
+    if (detailsBtn) detailsBtn.href = data.detailsUrl || "#";
+  }
+})();
