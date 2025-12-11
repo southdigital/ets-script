@@ -151,7 +151,7 @@ function initETSLocationFinder() {
     if (bounds) {
       map.fitBounds(bounds, {
         padding: 60,
-        maxZoom: 9 // zoomed into area with most gyms
+        maxZoom: 6 // zoomed into area with most gyms
       });
     }
   }
