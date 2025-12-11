@@ -6,7 +6,7 @@ function initETSNearest() {
   const input      = document.getElementById("search-nearest-ets-location");
   const button     = form ? form.querySelector(".w-button") : null;
   const resultsBox = document.querySelector(".locations-listing-main-box");
-  const netlifyUrl = "/.netlify/functions/nearest-locations"; // full URL if cross-origin
+  const netlifyUrl = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations"; // full URL if cross-origin
 
   if (!form || !input || !button) {
     console.error("[ETS] Missing node(s)", { form: !!form, input: !!input, button: !!button });
