@@ -1,12 +1,12 @@
 function initETSNearest() {
   console.log("[ETS] initETSNearest start");
 
-  // ---------- SELECTORS (scoped to your updated form) ----------
+  // ---------- SELECTORS ----------
   const form       = document.getElementById("search-form-ets");
   const input      = document.getElementById("search-nearest-ets-location");
   const button     = form ? form.querySelector(".w-button") : null;
   const resultsBox = document.querySelector(".locations-listing-main-box");
-  const netlifyUrl = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations"; // full URL if cross-origin
+  const netlifyUrl = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
 
   if (!form || !input || !button) {
     console.error("[ETS] Missing node(s)", { form: !!form, input: !!input, button: !!button });
@@ -25,23 +25,24 @@ function initETSNearest() {
   form.setAttribute("novalidate", "novalidate");
 
   // ---------- Places Autocomplete (US only) ----------
-  let autocomplete = null;
   if (window.google && google.maps && google.maps.places) {
-    autocomplete = new google.maps.places.Autocomplete(input, {
+    new google.maps.places.Autocomplete(input, {
       types: ["geocode"],
       componentRestrictions: { country: "us" }
     });
     console.log("[ETS] Places Autocomplete initialized (US)");
-    // we’ll call the Netlify API on click, not on place_changed
   } else {
     console.error("[ETS] google.maps.places not available — check script tag & API key");
   }
 
   // ---------- Loading UI ----------
   const originalBtnText = button.textContent || "Search";
-  function setLoading(isLoading){
+  let isLoading = false;
+
+  function setLoading(on){
+    isLoading = !!on;
     if (!resultsBox) return;
-    if (isLoading) {
+    if (on) {
       button.disabled = true;
       button.textContent = "Searching...";
       resultsBox.style.transition = "opacity 180ms ease";
@@ -65,21 +66,16 @@ function initETSNearest() {
   }
 
   function updatePrimaryCard(card, data){
-    // image
     const img = card.querySelector(".location-thumbnail-wrapper img.location-thumbnail");
     if (img && data.image) { img.src = data.image; img.srcset=""; img.sizes=""; img.alt = data.name || "Location"; }
-    // title
     const h = card.querySelector("h3"); if (h) h.textContent = data.name || "";
-    // distance
     const distWrap = card.querySelector(".distance-in-miles-wrapper");
     if (distWrap){ distWrap.classList.remove("d-none"); const t=distWrap.querySelector(".text-size-regular"); if (t) t.textContent = data.distanceText || ""; }
-    // ETA
     const etaWrap = card.querySelector(".estimated-drie-time-wrapper");
     if (etaWrap){
       if (data.durationText){ etaWrap.classList.remove("d-none"); const t2=etaWrap.querySelector(".text-size-regular"); if (t2) t2.textContent = data.durationText; }
       else { etaWrap.classList.add("d-none"); }
     }
-    // buttons
     const btns = Array.prototype.slice.call(card.querySelectorAll(".button"));
     btns.forEach(function(a){
       const label = (a.textContent || "").toLowerCase();
@@ -100,52 +96,56 @@ function initETSNearest() {
     const detailsBtn = card.querySelector(".button"); if (detailsBtn) detailsBtn.href = data.detailsUrl || "#";
   }
 
-  // ---------- Click handler (your approach) ----------
-  function handleSearchButtonClick(e){
+  // ---------- Click handler (click-only; disables immediately) ----------
+  async function handleClick(e){
     e.preventDefault();
     e.stopPropagation();
+    if (isLoading) { console.log("[ETS] click ignored (in-flight)"); return; }
 
-    const query = (input.value || "").trim();
-    if (!query) {
-      console.warn("[ETS] Empty query");
-      return;
-    }
+    setLoading(true); // disable + show Searching… immediately
 
-    const payload = { q: query, limit: 3 };
-    console.log("[ETS] payload →", payload);
+    try {
+      const query = (input.value || "").trim();
+      if (!query) {
+        console.warn("[ETS] Empty query");
+        return;
+      }
 
-    setLoading(true);
-    fetch(netlifyUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    })
-    .then(function(res){
+      const payload = { q: query, limit: 3 };
+      console.log("[ETS] payload →", payload);
+
+      const res = await fetch(netlifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
       console.log("[ETS] status:", res.status);
-      return res.json().then(function(j){ return { ok: res.ok, data: j }; });
-    })
-    .then(function(r){
-      console.log("[ETS] body:", r.data);
-      if (!r.ok) throw new Error(r.data && r.data.error ? r.data.error : "Search failed");
-      applyResultsToDom(r.data.items || []);
+
+      const j = await res.json();
+      console.log("[ETS] body:", j);
+
+      if (!res.ok) throw new Error(j && j.error ? j.error : "Search failed");
+
+      applyResultsToDom(j.items || []);
       input.value = "";
-    })
-    .catch(function(err){
+    } catch (err) {
       console.error("[ETS] ERROR:", err);
-    })
-    .finally(function(){
+    } finally {
       setLoading(false);
-    });
+    }
   }
 
-  // attach listeners
-  button.addEventListener("click", handleSearchButtonClick);
+  // attach listener (CLICK ONLY)
+  button.addEventListener("click", handleClick);
+
+  // ensure Enter does nothing (click-only)
   input.addEventListener("keydown", function(e){
     if (e.key === "Enter") {
       e.preventDefault();
-      handleSearchButtonClick(e);
+      e.stopPropagation();
+      console.log("[ETS] Enter ignored (click-only mode).");
     }
   });
 
-  console.log("[ETS] wired: prevent submit, autocomplete (US), click handler.");
+  console.log("[ETS] wired: click-only, immediate disable, Searching… text.");
 }
