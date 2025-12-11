@@ -3,8 +3,8 @@ function initETSNearest() {
 
   // --- SELECTORS (this page) ---
   const searchInput = document.getElementById("search-nearest-ets-location"); // your input id on this page
-  const searchForm  = document.getElementById("email-form");                  // same id you shared
-  const searchButton = document.querySelector("#email-form .w-button");       // the Webflow button inside the form
+  const searchForm  = document.getElementById("search-form-ets");                  // same id you shared
+  const searchButton = document.querySelector("#search-form-ets .button");       // the Webflow button inside the form
   const resultsBox  = document.querySelector(".locations-listing-main-box");  // fade during search
 
   if (!searchInput || !searchForm || !searchButton) {
