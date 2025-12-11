@@ -4,7 +4,7 @@ function initETSNearest() {
   // ---------- SELECTORS ----------
   const form       = document.getElementById("search-form-ets");
   const input      = document.getElementById("search-nearest-ets-location");
-  const button     = form ? form.querySelector(".w-button") : null;
+  const button     = form ? form.querySelector("#search-form-ets .w-button") : null; // scoped to form
   const resultsBox = document.querySelector(".locations-listing-main-box");
   const netlifyUrl = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
 
@@ -14,7 +14,7 @@ function initETSNearest() {
   }
   console.log("[ETS] Nodes bound OK");
 
-  // ---------- Block any form submission ----------
+  // ---------- Prevent any form submit ----------
   form.addEventListener("submit", function(e){
     console.warn("[ETS] submit prevented");
     e.preventDefault();
@@ -35,22 +35,39 @@ function initETSNearest() {
     console.error("[ETS] google.maps.places not available — check script tag & API key");
   }
 
-  // ---------- Loading UI ----------
-  const originalBtnText = button.textContent || "Search";
-  let isLoading = false;
+  // ---------- Robust label helpers ----------
+  const originalHTML = button.innerHTML; // preserves any spans/icons
+  const originalValue = ("value" in button) ? button.value : null;
+  const ORIGINAL_TEXT = (button.textContent || button.innerText || "Search").trim();
 
-  function setLoading(on){
+  function setBtnLabel(el, label) {
+    // Handle input/anchor/button uniformly
+    if ("value" in el) el.value = label;
+    el.textContent = label;
+    el.innerHTML = label; // override any inner spans that might hide text
+    el.setAttribute("aria-busy", "true");
+  }
+  function restoreBtnLabel(el) {
+    if ("value" in el && originalValue !== null) el.value = ORIGINAL_TEXT;
+    el.innerHTML = originalHTML; // restore original structure (icons/spans)
+    el.removeAttribute("aria-busy");
+  }
+
+  // ---------- Loading UI ----------
+  let isLoading = false;
+  function setLoading(on) {
     isLoading = !!on;
-    if (!resultsBox) return;
     if (on) {
       button.disabled = true;
-      button.textContent = "Searching...";
-      resultsBox.style.transition = "opacity 180ms ease";
-      resultsBox.style.opacity = "0.3";
+      setBtnLabel(button, "Searching...");
+      if (resultsBox) {
+        resultsBox.style.transition = "opacity 180ms ease";
+        resultsBox.style.opacity = "0.3";
+      }
     } else {
       button.disabled = false;
-      button.textContent = originalBtnText;
-      resultsBox.style.opacity = "1";
+      restoreBtnLabel(button);
+      if (resultsBox) resultsBox.style.opacity = "1";
     }
   }
 
@@ -96,7 +113,7 @@ function initETSNearest() {
     const detailsBtn = card.querySelector(".button"); if (detailsBtn) detailsBtn.href = data.detailsUrl || "#";
   }
 
-  // ---------- Click handler (click-only; disables immediately) ----------
+  // ---------- Click handler (click-only; disable immediately) ----------
   async function handleClick(e){
     e.preventDefault();
     e.stopPropagation();
@@ -108,7 +125,7 @@ function initETSNearest() {
       const query = (input.value || "").trim();
       if (!query) {
         console.warn("[ETS] Empty query");
-        return;
+        return; // finally {} will restore
       }
 
       const payload = { q: query, limit: 3 };
@@ -131,21 +148,21 @@ function initETSNearest() {
     } catch (err) {
       console.error("[ETS] ERROR:", err);
     } finally {
-      setLoading(false);
+      setLoading(false); // always restore label + enable
     }
   }
 
-  // attach listener (CLICK ONLY)
+  // click-only mode
   button.addEventListener("click", handleClick);
 
-  // ensure Enter does nothing (click-only)
+  // ignore Enter entirely (click-only as requested)
   input.addEventListener("keydown", function(e){
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      console.log("[ETS] Enter ignored (click-only mode).");
+      console.log("[ETS] Enter ignored (click-only).");
     }
   });
 
-  console.log("[ETS] wired: click-only, immediate disable, Searching… text.");
+  console.log("[ETS] wired: click-only, immediate disable, Searching… label.");
 }
