@@ -670,7 +670,7 @@ function initETSLocationFinder() {
 
         const { gLocation, lat, lng } = await geocodeQuery(urlQuery);
 
-        initMapWithCenter({ lat, lng }, 5.2, 6); // start a bit zoomed out, ease to final zoom
+        initMapWithCenter({ lat, lng }, 4, 6); // start a bit zoomed out, ease to final zoom
 
         // Once map exists, show user marker too
         updateUserLocationMarker(lat, lng);
