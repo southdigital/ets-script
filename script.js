@@ -187,22 +187,15 @@ function initETSLocationFinder() {
     }
   }
 
-  // --- 5) Selection / syncing (markers -> cards) --------------------
-
-  // function buildPopupHTML(loc) {
-  //   return `
-  //     <div class="ets-popup">
-  //       <div class="ets-popup-title">${loc.name || ''}</div>
-  //       <div class="ets-popup-address">${loc.address || ''}</div>
-  //       <div class="ets-popup-meta">
-  //         ${loc.distanceText ? `<span class="ets-popup-pill">${loc.distanceText}</span>` : ''}
-  //         ${loc.durationText ? `<span class="ets-popup-pill">${loc.durationText}</span>` : ''}
-  //       </div>
-  //     </div>
-  //   `;
-  // }
-
   function buildPopupHTML(loc) {
+    const distanceClass = loc.distanceText
+      ? 'distance-in-miles-wrapper popup'
+      : 'distance-in-miles-wrapper popup d-none';
+
+    const durationClass = loc.durationText
+      ? 'estimated-drie-time-wrapper popup'
+      : 'estimated-drie-time-wrapper popup d-none';
+
     return `
       <div class="location-item map-popup">
         <div class="flex map-popup-header">
@@ -221,22 +214,18 @@ function initETSLocationFinder() {
 
         <div class="flex gap-small margin-top-6">
 
-          <div class="d-none distance-in-miles-wrapper popup">
+          <div class="${distanceClass}">
             <div class="w-embed">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9.16732 8.25011V14.1668C9.16732 14.6668 9.50065 15.0001 10.0007 15.0001C10.5007 15.0001 10.834 14.6668 10.834 14.1668V8.25011C12.584 7.75011 13.6673 6.00011 13.2507 4.16677C12.834 2.33344 10.9173 1.33344 9.16732 1.75011C7.41732 2.16677 6.33398 4.00011 6.75065 5.83344C7.08398 7.00011 8.00065 7.91677 9.16732 8.25011ZM13.6673 10.6668C13.2507 10.5001 12.7507 10.6668 12.584 11.1668C12.4173 11.5834 12.584 12.0834 13.084 12.2501C14.334 12.7501 15.084 13.5001 15.084 14.2501C15.084 15.4168 13.0007 16.7501 10.084 16.7501C7.16732 16.7501 5.08398 15.4168 5.08398 14.2501C5.08398 13.5001 5.83398 12.7501 7.08398 12.2501C7.50065 12.0834 7.75065 11.5834 7.58398 11.1668C7.41732 10.7501 6.91732 10.5001 6.50065 10.6668C4.50065 11.4168 3.33398 12.7501 3.33398 14.1668C3.33398 16.5001 6.25065 18.3334 10.0007 18.3334C13.7507 18.3334 16.6673 16.5001 16.6673 14.1668C16.6673 12.7501 15.5007 11.4168 13.6673 10.6668Z" fill="#3FA54D"></path>
-              </svg>
+              <!-- icon svg -->
             </div>
             <div class="text-size-regular distance-text">
               ${loc.distanceText || ''}
             </div>
           </div>
 
-          <div class="estimated-drie-time-wrapper d-none">
+          <div class="${durationClass}">
             <div class="flex center w-embed">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M16.5013 7.58333L15.3346 4.16667C15.0013 3.16667 14.0013 2.5 13.0013 2.5H7.0013C6.0013 2.5 5.0013 3.16667 4.66797 4.25L3.5013 7.58333C2.41797 7.91667 1.66797 8.83333 1.66797 10V13.3333C1.66797 14.4167 2.33464 15.3333 3.33464 15.6667V16.6667C3.33464 17.1667 3.66797 17.5 4.16797 17.5C4.66797 17.5 5.0013 17.1667 5.0013 16.6667V15.8333H15.0013V16.6667C15.0013 17.1667 15.3346 17.5 15.8346 17.5C16.3346 17.5 16.668 17.1667 16.668 16.6667V15.6667C17.668 15.3333 18.3346 14.4167 18.3346 13.3333V10C18.3346 8.83333 17.5846 7.91667 16.5013 7.58333Z" fill="#696FE3"></path>
-              </svg>
+              <!-- icon svg -->
             </div>
             <div class="text-size-regular estimated-drive-time-text">
               ${loc.durationText || ''}
