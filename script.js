@@ -9,6 +9,7 @@ function initETSLocationFinder() {
   }
 
   // --- GLOBALS ------------------------------------------------------
+  let hasDoneInitialCameraMove = false;
   let map = null;
   let userLocationMarker = null;
   let lastUserLngLat = null;
@@ -151,8 +152,10 @@ function initETSLocationFinder() {
     if (bounds) {
       map.fitBounds(bounds, {
         padding: 60,
-        maxZoom: 6 // zoomed into area with most gyms
+        maxZoom: 6,
+        duration: hasDoneInitialCameraMove ? 0 : 2500
       });
+      hasDoneInitialCameraMove = true;
     }
   }
 
@@ -176,17 +179,10 @@ function initETSLocationFinder() {
 
       map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
-      // map.on('load', function () {
-      //   // First load: center on area that has the most gyms
-      //   centerMapOnDensestArea();
-      //   createMarkersAndWireCards();
-      // });
-
-      map.fitBounds(bounds, {
-        padding: 60,
-        maxZoom: 6,
-        duration: 2500 // <-- slower first-load animation (ms)
-        // easing: t => t // optional; keep default easing if you like
+      map.on('load', function () {
+        // First load: center on area that has the most gyms
+        centerMapOnDensestArea();
+        createMarkersAndWireCards();
       });
     }
   }
