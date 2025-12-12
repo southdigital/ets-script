@@ -173,29 +173,33 @@ function initETSNearest() {
   const NETLIFY_URL = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
 
   function boot(){
-    console.log("[ETS-AUTO] boot() start");
-    console.log("[ETS-AUTO] readyState:", document.readyState);
-
-    const box = document.querySelector(".locations-listing-main-box");
-    console.log("[ETS-AUTO] resultsBox exists?", !!box);
+    console.log("[ETS-AUTO] boot() start", { readyState: document.readyState, href: location.href });
 
     if (!("geolocation" in navigator)) {
       console.warn("[ETS-AUTO] geolocation not supported");
       return;
     }
 
-    // Quick permission visibility (best-effort; not supported everywhere)
-    if (navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: "geolocation" }).then((p) => {
-        console.log("[ETS-AUTO] permission state:", p.state); // granted / prompt / denied
-      }).catch(()=>{});
-    }
+    // Secure context check (geolocation requires https)
+    console.log("[ETS-AUTO] isSecureContext:", window.isSecureContext);
 
     setLoading(true);
 
+    let finished = false;
+    const watchdog = setTimeout(() => {
+      if (!finished) {
+        console.error("[ETS-AUTO] watchdog: geolocation callbacks never fired. Likely blocked / insecure context / OS location off.");
+        setLoading(false);
+      }
+    }, 20000);
+
     console.log("[ETS-AUTO] calling getCurrentPosition…");
+
     navigator.geolocation.getCurrentPosition(
       async function onSuccess(pos){
+        finished = true;
+        clearTimeout(watchdog);
+
         console.log("[ETS-AUTO] geolocation success");
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
@@ -212,21 +216,13 @@ function initETSNearest() {
 
           console.log("[ETS-AUTO] fetch status:", res.status);
 
-          const text = await res.text(); // read raw first for debugging
+          const text = await res.text();
           console.log("[ETS-AUTO] raw body:", text);
 
-          let data;
-          try { data = JSON.parse(text); } catch(e) {
-            throw new Error("Response is not JSON");
-          }
-
+          const data = JSON.parse(text);
           console.log("[ETS-AUTO] parsed body:", data);
 
-          if (!res.ok) {
-            throw new Error(data && data.error ? data.error : "Nearest lookup failed");
-          }
-
-          console.log("[ETS-AUTO] items length:", (data.items || []).length);
+          if (!res.ok) throw new Error(data?.error || "Nearest lookup failed");
 
           applyResultsToDom(data.items || []);
         } catch (err) {
@@ -236,21 +232,32 @@ function initETSNearest() {
         }
       },
       function onError(err){
-        console.warn("[ETS-AUTO] geolocation error/denied:", err);
-        setLoading(false);
+        finished = true;
+        clearTimeout(watchdog);
+
+        console.warn("[ETS-AUTO] geolocation error callback fired:", err);
+        // err.code: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+        console.warn("[ETS-AUTO] error details:", {
+          code: err && err.code,
+          message: err && err.message
+        });
+
+        setLoading(false); // do nothing else
       },
-      { enableHighAccuracy:false, timeout:15000, maximumAge:0 }
+      {
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 0
+      }
     );
   }
 
-  // Run even if script loads after DOMContentLoaded
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }
 
-  /* -------- UI helpers -------- */
   function setLoading(isLoading){
     const box = document.querySelector(".locations-listing-main-box");
     if (!box) return;
@@ -262,7 +269,7 @@ function initETSNearest() {
     if (!el) return;
     el.classList.remove("d-none");
     el.removeAttribute("hidden");
-    el.style.display = ""; 
+    el.style.display = "";
   }
   function hideEl(el){
     if (!el) return;
@@ -270,86 +277,45 @@ function initETSNearest() {
   }
   function ensureText(el, selector, text){
     if (!el) return;
-    let t = el.querySelector(selector);
-    if (!t) {
-      // In your DOM it's always there, but keep fallback
-      t = document.createElement("div");
-      t.className = selector.replace(".", "");
-      el.appendChild(t);
-    }
-    t.textContent = text || "";
+    const t = el.querySelector(selector);
+    if (t) t.textContent = text || "";
   }
 
-  /* -------- DOM patchers -------- */
   function applyResultsToDom(items){
-    console.log("[ETS-AUTO] applyResultsToDom()");
-    console.log("[ETS-AUTO] primary exists?", !!document.querySelector(".top-location-card"));
-    console.log("[ETS-AUTO] secondary count:", document.querySelectorAll(".secondary-locations .location-content-sec").length);
+    console.log("[ETS-AUTO] applyResultsToDom items:", items);
 
     const primary = document.querySelector(".top-location-card");
-    const seconds = Array.prototype.slice.call(document.querySelectorAll(".secondary-locations .location-content-sec"));
+    const seconds = Array.from(document.querySelectorAll(".secondary-locations .location-content-sec"));
 
-    if (primary && items[0]) updatePrimaryCard(primary, items[0]);
-    if (seconds[0] && items[1]) updateSecondaryCard(seconds[0], items[1]);
-    if (seconds[1] && items[2]) updateSecondaryCard(seconds[1], items[2]);
+    if (primary && items[0]) patchCard(primary, items[0], true);
+    if (seconds[0] && items[1]) patchCard(seconds[0], items[1], false);
+    if (seconds[1] && items[2]) patchCard(seconds[1], items[2], false);
   }
 
-  function updatePrimaryCard(card, data){
-    console.log("[ETS-AUTO] updatePrimaryCard", data);
-
-    const img = card.querySelector(".location-thumbnail-wrapper img.location-thumbnail");
-    if (img && data.image) { img.src = data.image; img.srcset=""; img.sizes=""; img.alt = data.name || "Location"; }
-
+  function patchCard(card, data, isPrimary){
     const h = card.querySelector("h3");
     if (h) h.textContent = data.name || "";
 
     const distWrap = card.querySelector(".distance-in-miles-wrapper");
-    if (data.distanceText) {
-      showEl(distWrap);
-      ensureText(distWrap, ".text-size-regular", data.distanceText);
-    } else {
-      hideEl(distWrap);
-    }
+    if (data.distanceText) { showEl(distWrap); ensureText(distWrap, ".text-size-regular", data.distanceText); }
+    else { hideEl(distWrap); }
 
     const etaWrap = card.querySelector(".estimated-drie-time-wrapper");
-    if (data.durationText) {
-      showEl(etaWrap);
-      ensureText(etaWrap, ".text-size-regular", data.durationText);
+    if (data.durationText) { showEl(etaWrap); ensureText(etaWrap, ".text-size-regular", data.durationText); }
+    else { hideEl(etaWrap); }
+
+    if (isPrimary) {
+      const img = card.querySelector(".location-thumbnail-wrapper img.location-thumbnail");
+      if (img && data.image) { img.src = data.image; img.srcset=""; img.sizes=""; img.alt = data.name || "Location"; }
+      const btns = card.querySelectorAll(".button, .button-7");
+      btns.forEach(a => {
+        const label = (a.textContent || "").toLowerCase();
+        if (label.includes("book")) a.href = data.bookUrl || "#";
+        if (label.includes("detail")) a.href = data.detailsUrl || "#";
+      });
     } else {
-      hideEl(etaWrap);
+      const detailsBtn = card.querySelector(".button, .button-7");
+      if (detailsBtn) detailsBtn.href = data.detailsUrl || "#";
     }
-
-    const btns = Array.prototype.slice.call(card.querySelectorAll(".button, .button-7"));
-    btns.forEach(function(a){
-      const label = (a.textContent || "").toLowerCase();
-      if (label.indexOf("book") > -1) a.href = data.bookUrl || "#";
-      if (label.indexOf("detail") > -1) a.href = data.detailsUrl || "#";
-    });
-  }
-
-  function updateSecondaryCard(card, data){
-    console.log("[ETS-AUTO] updateSecondaryCard", data);
-
-    const h = card.querySelector("h3");
-    if (h) h.textContent = data.name || "";
-
-    const distWrap = card.querySelector(".distance-in-miles-wrapper");
-    if (data.distanceText) {
-      showEl(distWrap);
-      ensureText(distWrap, ".text-size-regular", data.distanceText);
-    } else {
-      hideEl(distWrap);
-    }
-
-    const etaWrap = card.querySelector(".estimated-drie-time-wrapper");
-    if (data.durationText) {
-      showEl(etaWrap);
-      ensureText(etaWrap, ".text-size-regular", data.durationText);
-    } else {
-      hideEl(etaWrap);
-    }
-
-    const detailsBtn = card.querySelector(".button, .button-7");
-    if (detailsBtn) detailsBtn.href = data.detailsUrl || "#";
   }
 })();
