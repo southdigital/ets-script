@@ -556,7 +556,7 @@ function initETSLocationFinder() {
   }
 
   // --- 7) Map init (IMPORTANT: centered by URL query if present) -----
-  function initMapWithCenter(centerLngLat, zoom) {
+  function initMapWithCenter(centerLngLat, initialZoom, animateToZoom) {
     if (!window.mapboxgl) {
       console.error('Mapbox GL JS not found');
       return;
@@ -574,16 +574,27 @@ function initETSLocationFinder() {
       container: 'heatmap',
       style: 'mapbox://styles/mapbox/dark-v11',
       center: [centerLngLat.lng, centerLngLat.lat],
-      zoom: zoom
+      zoom: initialZoom
     });
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
     map.on('load', () => {
-      // Always create markers on load
       createMarkersAndWireCards();
+
+      // ✅ Only runs when you passed animateToZoom (i.e., URL query case)
+      if (typeof animateToZoom === 'number') {
+        map.easeTo({
+          center: [centerLngLat.lng, centerLngLat.lat],
+          zoom: animateToZoom,
+          duration: 900,
+          essential: true,
+          offset: [0, 30] // optional subtle settle
+        });
+      }
     });
   }
+
 
   // --- 8) Bootstrapping logic ---------------------------------------
   (async function bootstrap() {
@@ -614,7 +625,7 @@ function initETSLocationFinder() {
 
         const { gLocation, lat, lng } = await geocodeQuery(urlQuery);
 
-        initMapWithCenter({ lat, lng }, 6);
+        initMapWithCenter({ lat, lng }, 5.2, 6); // start a bit zoomed out, ease to final zoom
 
         // Once map exists, show user marker too
         updateUserLocationMarker(lat, lng);
