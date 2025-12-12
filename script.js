@@ -149,14 +149,59 @@ function initETSLocationFinder() {
   // --- 4) Popup HTML -------------------------------------------------
   // (Keep your original popup HTML if you want; I kept it minimal here.)
   function buildPopupHTML(loc) {
-    const distanceLine = loc.distanceText ? `<div class="distance-text">${loc.distanceText}</div>` : '';
-    const durationLine = loc.durationText ? `<div class="estimated-drive-time-text">${loc.durationText}</div>` : '';
+    const distanceClass = loc.distanceText
+      ? 'distance-in-miles-wrapper popup'
+      : 'distance-in-miles-wrapper popup d-none';
+
+    const durationClass = loc.durationText
+      ? 'estimated-drie-time-wrapper popup'
+      : 'estimated-drie-time-wrapper popup d-none';
 
     return `
       <div class="location-item map-popup">
-        <div class="text-size-large text-color-inverse text-weight-bold">${loc.name || ''}</div>
-        <div class="text-size-regular text-color-inverse margin-top-6">${loc.address || ''}</div>
-        <div class="margin-top-6">${distanceLine}${durationLine}</div>
+        <div class="flex map-popup-header">
+          <div class="logo-wrapper-location card-image-wrapper-2">
+            <img
+              src="https://cdn.prod.website-files.com/68f9dd01a660a09f46b08cb1/68fb200cedc665fc0b63ccce_ets-logo.avif"
+              loading="lazy"
+              alt=""
+              class="map-card-image"
+            >
+          </div>
+          <div class="text-size-large text-color-inverse text-weight-bold">
+            ${loc.name || ''}
+          </div>
+        </div>
+
+        <div class="flex gap-small margin-top-6">
+
+          <div class="${distanceClass}">
+            <div class="w-embed">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9.16732 8.25011V14.1668C9.16732 14.6668 9.50065 15.0001 10.0007 15.0001C10.5007 15.0001 10.834 14.6668 10.834 14.1668V8.25011C12.584 7.75011 13.6673 6.00011 13.2507 4.16677C12.834 2.33344 10.9173 1.33344 9.16732 1.75011C7.41732 2.16677 6.33398 4.00011 6.75065 5.83344C7.08398 7.00011 8.00065 7.91677 9.16732 8.25011ZM13.6673 10.6668C13.2507 10.5001 12.7507 10.6668 12.584 11.1668C12.4173 11.5834 12.584 12.0834 13.084 12.2501C14.334 12.7501 15.084 13.5001 15.084 14.2501C15.084 15.4168 13.0007 16.7501 10.084 16.7501C7.16732 16.7501 5.08398 15.4168 5.08398 14.2501C5.08398 13.5001 5.83398 12.7501 7.08398 12.2501C7.50065 12.0834 7.75065 11.5834 7.58398 11.1668C7.41732 10.7501 6.91732 10.5001 6.50065 10.6668C4.50065 11.4168 3.33398 12.7501 3.33398 14.1668C3.33398 16.5001 6.25065 18.3334 10.0007 18.3334C13.7507 18.3334 16.6673 16.5001 16.6673 14.1668C16.6673 12.7501 15.5007 11.4168 13.6673 10.6668Z" fill="#3FA54D"></path>
+              </svg>
+            </div>
+            <div class="text-size-regular distance-text">
+              ${loc.distanceText || ''}
+            </div>
+          </div>
+
+          <div class="${durationClass}">
+            <div class="flex center w-embed">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M16.5013 7.58333L15.3346 4.16667C15.0013 3.16667 14.0013 2.5 13.0013 2.5H7.0013C6.0013 2.5 5.0013 3.16667 4.66797 4.25L3.5013 7.58333C2.41797 7.91667 1.66797 8.83333 1.66797 10V13.3333C1.66797 14.4167 2.33464 15.3333 3.33464 15.6667V16.6667C3.33464 17.1667 3.66797 17.5 4.16797 17.5C4.66797 17.5 5.0013 17.1667 5.0013 16.6667V15.8333H15.0013V16.6667C15.0013 17.1667 15.3346 17.5 15.8346 17.5C16.3346 17.5 16.668 17.1667 16.668 16.6667V15.6667C17.668 15.3333 18.3346 14.4167 18.3346 13.3333V10C18.3346 8.83333 17.5846 7.91667 16.5013 7.58333ZM6.2513 4.75C6.33464 4.41667 6.66797 4.16667 7.0013 4.16667H12.918C13.2513 4.16667 13.5846 4.41667 13.668 4.75L14.668 7.5H5.33464L6.2513 4.75ZM5.83464 12.5C5.33464 12.5 5.0013 12.1667 5.0013 11.6667C5.0013 11.1667 5.33464 10.8333 5.83464 10.8333C6.33464 10.8333 6.66797 11.1667 6.66797 11.6667C6.66797 12.1667 6.33464 12.5 5.83464 12.5ZM10.8346 12.5H9.16797C8.66797 12.5 8.33464 12.1667 8.33464 11.6667C8.33464 11.1667 8.66797 10.8333 9.16797 10.8333H10.8346C11.3346 10.8333 11.668 11.1667 11.668 11.6667C11.668 12.1667 11.3346 12.5 10.8346 12.5ZM14.168 12.5C13.668 12.5 13.3346 12.1667 13.3346 11.6667C13.3346 11.1667 13.668 10.8333 14.168 10.8333C14.668 10.8333 15.0013 11.1667 15.0013 11.6667C15.0013 12.1667 14.668 12.5 14.168 12.5Z" fill="#696FE3"></path>
+              </svg>
+            </div>
+            <div class="text-size-regular estimated-drive-time-text">
+              ${loc.durationText || ''}
+            </div>
+          </div>
+
+        </div>
+
+        <div class="text-size-regular text-color-inverse margin-top-6">
+          ${loc.address || ''}
+        </div>
       </div>
     `;
   }
