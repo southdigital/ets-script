@@ -172,37 +172,83 @@ function initETSNearest() {
 (function(){
   const NETLIFY_URL = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
 
-  document.addEventListener("DOMContentLoaded", function () {
-    if (!("geolocation" in navigator)) return;
+  function boot(){
+    console.log("[ETS-AUTO] boot() start");
+    console.log("[ETS-AUTO] readyState:", document.readyState);
+
+    const box = document.querySelector(".locations-listing-main-box");
+    console.log("[ETS-AUTO] resultsBox exists?", !!box);
+
+    if (!("geolocation" in navigator)) {
+      console.warn("[ETS-AUTO] geolocation not supported");
+      return;
+    }
+
+    // Quick permission visibility (best-effort; not supported everywhere)
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: "geolocation" }).then((p) => {
+        console.log("[ETS-AUTO] permission state:", p.state); // granted / prompt / denied
+      }).catch(()=>{});
+    }
 
     setLoading(true);
+
+    console.log("[ETS-AUTO] calling getCurrentPosition…");
     navigator.geolocation.getCurrentPosition(
       async function onSuccess(pos){
+        console.log("[ETS-AUTO] geolocation success");
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        console.log("[ETS-AUTO] coords:", { lat, lng });
+
         try {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
+          console.log("[ETS-AUTO] fetch ->", NETLIFY_URL);
 
           const res = await fetch(NETLIFY_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ lat, lng, limit: 3 })
           });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data && data.error ? data.error : "Nearest lookup failed");
+
+          console.log("[ETS-AUTO] fetch status:", res.status);
+
+          const text = await res.text(); // read raw first for debugging
+          console.log("[ETS-AUTO] raw body:", text);
+
+          let data;
+          try { data = JSON.parse(text); } catch(e) {
+            throw new Error("Response is not JSON");
+          }
+
+          console.log("[ETS-AUTO] parsed body:", data);
+
+          if (!res.ok) {
+            throw new Error(data && data.error ? data.error : "Nearest lookup failed");
+          }
+
+          console.log("[ETS-AUTO] items length:", (data.items || []).length);
 
           applyResultsToDom(data.items || []);
         } catch (err) {
-          console.error("[ETS-AUTO]", err);
+          console.error("[ETS-AUTO] ERROR:", err);
         } finally {
           setLoading(false);
         }
       },
-      function onError(){
-        setLoading(false); // user denied → leave defaults
+      function onError(err){
+        console.warn("[ETS-AUTO] geolocation error/denied:", err);
+        setLoading(false);
       },
-      { enableHighAccuracy:false, timeout:8000, maximumAge:300000 }
+      { enableHighAccuracy:false, timeout:15000, maximumAge:0 }
     );
-  });
+  }
+
+  // Run even if script loads after DOMContentLoaded
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
 
   /* -------- UI helpers -------- */
   function setLoading(isLoading){
@@ -216,7 +262,7 @@ function initETSNearest() {
     if (!el) return;
     el.classList.remove("d-none");
     el.removeAttribute("hidden");
-    el.style.display = ""; // let CSS handle display
+    el.style.display = ""; 
   }
   function hideEl(el){
     if (!el) return;
@@ -226,6 +272,7 @@ function initETSNearest() {
     if (!el) return;
     let t = el.querySelector(selector);
     if (!t) {
+      // In your DOM it's always there, but keep fallback
       t = document.createElement("div");
       t.className = selector.replace(".", "");
       el.appendChild(t);
@@ -235,6 +282,10 @@ function initETSNearest() {
 
   /* -------- DOM patchers -------- */
   function applyResultsToDom(items){
+    console.log("[ETS-AUTO] applyResultsToDom()");
+    console.log("[ETS-AUTO] primary exists?", !!document.querySelector(".top-location-card"));
+    console.log("[ETS-AUTO] secondary count:", document.querySelectorAll(".secondary-locations .location-content-sec").length);
+
     const primary = document.querySelector(".top-location-card");
     const seconds = Array.prototype.slice.call(document.querySelectorAll(".secondary-locations .location-content-sec"));
 
@@ -244,15 +295,14 @@ function initETSNearest() {
   }
 
   function updatePrimaryCard(card, data){
-    // image
+    console.log("[ETS-AUTO] updatePrimaryCard", data);
+
     const img = card.querySelector(".location-thumbnail-wrapper img.location-thumbnail");
     if (img && data.image) { img.src = data.image; img.srcset=""; img.sizes=""; img.alt = data.name || "Location"; }
 
-    // name
     const h = card.querySelector("h3");
     if (h) h.textContent = data.name || "";
 
-    // distance
     const distWrap = card.querySelector(".distance-in-miles-wrapper");
     if (data.distanceText) {
       showEl(distWrap);
@@ -261,7 +311,6 @@ function initETSNearest() {
       hideEl(distWrap);
     }
 
-    // ETA (note class is 'estimated-drie-time-wrapper' per your DOM)
     const etaWrap = card.querySelector(".estimated-drie-time-wrapper");
     if (data.durationText) {
       showEl(etaWrap);
@@ -270,16 +319,17 @@ function initETSNearest() {
       hideEl(etaWrap);
     }
 
-    // buttons
-    const btns = Array.prototype.slice.call(card.querySelectorAll(".button"));
+    const btns = Array.prototype.slice.call(card.querySelectorAll(".button, .button-7"));
     btns.forEach(function(a){
       const label = (a.textContent || "").toLowerCase();
-      if (label.indexOf("book")   > -1) a.href = data.bookUrl || "#";
+      if (label.indexOf("book") > -1) a.href = data.bookUrl || "#";
       if (label.indexOf("detail") > -1) a.href = data.detailsUrl || "#";
     });
   }
 
   function updateSecondaryCard(card, data){
+    console.log("[ETS-AUTO] updateSecondaryCard", data);
+
     const h = card.querySelector("h3");
     if (h) h.textContent = data.name || "";
 
@@ -299,7 +349,7 @@ function initETSNearest() {
       hideEl(etaWrap);
     }
 
-    const detailsBtn = card.querySelector(".button");
+    const detailsBtn = card.querySelector(".button, .button-7");
     if (detailsBtn) detailsBtn.href = data.detailsUrl || "#";
   }
 })();
