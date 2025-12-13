@@ -37,7 +37,7 @@
 
     const form = document.getElementById("find-loc-form-popup");
     const input = document.getElementById("user-city-popup");
-    const submitBtn = form?.querySelector('input[type="submit"], .w-button');
+    const submitBtn = form?.querySelector('a.primary-btn');
     const useCurrentBtn = document.querySelector(
       ".use-current-location-popup-btn"
     );
