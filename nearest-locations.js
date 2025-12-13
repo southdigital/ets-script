@@ -1,4 +1,4 @@
-function initETSNearest() {
+window.initETSNearest = function () {
   console.log("[ETS] initETSNearest start");
 
   // ---------- SELECTORS ----------
