@@ -457,3 +457,42 @@
       showStep2HideStep1();
     });
   })();
+
+
+  // Handle and track booking form submission 
+
+
+(function () {
+  let fired = false;
+
+  window.addEventListener("message", function (event) {
+    const data = event.data;
+
+    // Ignore iframe resizer chatter
+    if (typeof data === "string" && data.startsWith("[iFrameSizer]")) return;
+
+    // Detect LeadConnector submission
+    if (Array.isArray(data) && data[0] === "set-sticky-contacts") {
+      if (fired) return;
+      fired = true;
+
+      console.log("✅ FORM SUBMITTED");
+
+      // 🔽 TOGGLE CLASSES
+      const firstForm = document.querySelector(".book-eval-popup.location-finder");
+      const secondForm = document.querySelector(".book-eval-calendar");
+
+      if (firstForm) {
+        firstForm.classList.add("d-none");
+      } else {
+        console.warn("⚠️ .first-form not found");
+      }
+
+      if (secondForm) {
+        secondForm.classList.remove("d-none");
+      } else {
+        console.warn("⚠️ .second-form not found");
+      }
+    }
+  });
+})();
