@@ -362,8 +362,6 @@
 })();
 
 
-<script src="https://link.msgsndr.com/js/form_embed.js"></script>
-
   (function () {
     // Root wrapper for the whole location finder popup
     const ROOT_SELECTOR = ".loc-finder-popup-wrapper";
