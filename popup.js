@@ -37,13 +37,12 @@
 
     const form = document.getElementById("find-loc-form-popup");
     const input = document.getElementById("user-city-popup");
-    const submitBtn = form?.querySelector('a.primary-btn');
-    const useCurrentBtn = document.querySelector(
-      ".use-current-location-popup-btn"
-    );
-    const listContainer = document.querySelector(
-      ".secondary-locations.locations-popup .w-dyn-items"
-    );
+
+    // Search button is <a> in your case
+    const submitBtn = form?.querySelector("a.primary-btn");
+
+    const useCurrentBtn = document.querySelector(".use-current-location-popup-btn");
+    const listContainer = document.querySelector(".secondary-locations.locations-popup .w-dyn-items");
 
     if (!form || !input || !submitBtn || !listContainer) {
       console.error("[ETS-POPUP] Missing required DOM nodes", {
@@ -54,6 +53,15 @@
       });
       return;
     }
+
+    // ---------------------------------------------------------
+    // FIX #1 (double init): prevent binding listeners more than once
+    // ---------------------------------------------------------
+    if (form.dataset.etsPopupInit === "1") {
+      console.log("[ETS-POPUP] already initialized, skipping listeners");
+      return;
+    }
+    form.dataset.etsPopupInit = "1";
 
     // Prevent form submit
     form.addEventListener("submit", (e) => {
@@ -66,14 +74,25 @@
 
     // Loading UI
     let isLoading = false;
-    const originalBtnText =
-      "value" in submitBtn && submitBtn.value ? submitBtn.value : "Search";
+
+    // For <a> use textContent
+    const originalBtnText = (submitBtn.textContent || "").trim() || "Search";
 
     function setLoading(on) {
       isLoading = !!on;
-      submitBtn.disabled = on;
-      if ("value" in submitBtn)
-        submitBtn.value = on ? "Searching..." : originalBtnText;
+
+      if (on) {
+        submitBtn.classList.add("is-loading");
+        submitBtn.setAttribute("aria-disabled", "true");
+        submitBtn.style.pointerEvents = "none"; // simulate disabled
+        submitBtn.textContent = "Searching...";
+      } else {
+        submitBtn.classList.remove("is-loading");
+        submitBtn.removeAttribute("aria-disabled");
+        submitBtn.style.pointerEvents = ""; // restore
+        submitBtn.textContent = originalBtnText;
+      }
+
       listContainer.style.opacity = on ? "0.35" : "1";
       listContainer.style.transition = "opacity 180ms ease";
     }
@@ -91,12 +110,8 @@
       return;
     }
 
-    // ----------------------------
-    // IMPORTANT CHANGE:
     // Do NOT call API on autocomplete selection.
     // Only call API on Search button click (or Use current location click).
-    // We'll store a pending selection here:
-    // ----------------------------
     let pendingSelection = {
       source: "text", // "text" | "coords"
       q: "",
@@ -134,11 +149,8 @@
         if (title) title.textContent = data?.name || "";
 
         // Address text
-        const addressText = node.querySelector(
-          ".directions-link .text-size-regular"
-        );
-        if (addressText)
-          addressText.textContent = data?.address || data?.addressText || "";
+        const addressText = node.querySelector(".directions-link .text-size-regular");
+        if (addressText) addressText.textContent = data?.address || data?.addressText || "";
 
         // Directions link
         const directionsLink = node.querySelector(".directions-link");
@@ -167,29 +179,17 @@
         if (driveTextEl) driveTextEl.textContent = data?.durationText || "";
         if (driveWrap) driveWrap.classList.remove("d-none");
 
-        // Book button (keep existing behavior + add new data attributes)
+        // Book button + iframe fields
         const bookBtn = Array.from(node.querySelectorAll("a")).find((a) =>
           (a.textContent || "").toLowerCase().includes("book")
         );
 
         if (bookBtn) {
-          // Keep href if you still want it (optional)
           bookBtn.href = data?.bookUrl || data?.bookingUrl || "#";
 
-          // NEW: attach iframe fields from API response
-          // (API returns: bookingFormIframeId, calendarIframeId, calendarIframeSrc)
-          bookBtn.setAttribute(
-            "data-booking-form-iframe-id",
-            data?.bookingFormIframeId || ""
-          );
-          bookBtn.setAttribute(
-            "data-calendar-iframe-id",
-            data?.calendarIframeId || ""
-          );
-          bookBtn.setAttribute(
-            "data-calendar-iframe-src",
-            data?.calendarIframeSrc || ""
-          );
+          bookBtn.setAttribute("data-booking-form-iframe-id", data?.bookingFormIframeId || "");
+          bookBtn.setAttribute("data-calendar-iframe-id", data?.calendarIframeId || "");
+          bookBtn.setAttribute("data-calendar-iframe-src", data?.calendarIframeSrc || "");
         }
 
         listContainer.appendChild(node);
@@ -210,9 +210,10 @@
     async function runSearchFromPending() {
       if (isLoading) return;
 
-      // Only run from button click (or current location click)
+      // Coords
       if (pendingSelection.source === "coords") {
         if (pendingSelection.lat == null || pendingSelection.lng == null) return;
+
         setLoading(true);
         try {
           const items = await fetchNearest({
@@ -229,7 +230,7 @@
         return;
       }
 
-      // Text search
+      // Text
       const query = (pendingSelection.q || input.value || "").trim();
       if (!query) return;
 
@@ -244,11 +245,11 @@
       }
     }
 
-    // Search button (ONLY place we call API for typed/selected address)
+    // Search click
     submitBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Ensure pending text mirrors input if user never triggered input event
+
       if (pendingSelection.source === "text") pendingSelection.q = input.value;
       runSearchFromPending();
     });
@@ -267,8 +268,7 @@
       componentRestrictions: { country: "us" },
     });
 
-    // IMPORTANT CHANGE:
-    // Do NOT call API here. Just store the coords for later.
+    // Do NOT call API here — only store selection
     autocomplete.addListener("place_changed", () => {
       const place = autocomplete.getPlace();
       const loc = place?.geometry?.location;
@@ -305,41 +305,54 @@
       });
     }
 
-    // Use current location click (still allowed to call API immediately)
+    // ---------------------------------------------------------
+    // FIX #2 (double alerts): lock while geolocation is in-flight
+    // ---------------------------------------------------------
+    let currentLocInFlight = false;
+
     useCurrentBtn?.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
 
+      if (currentLocInFlight) return; // prevents double triggers
+      currentLocInFlight = true;
+
       if (!navigator.geolocation) {
+        currentLocInFlight = false;
         locationDeniedAlert();
         return;
       }
 
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
+          try {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
 
-          const okUS = await isUSLocation(lat, lng);
-          if (!okUS) {
-            alert(
-              "Current location search is available for US locations only. Please enter a US ZIP code or city."
-            );
-            return;
+            const okUS = await isUSLocation(lat, lng);
+            if (!okUS) {
+              alert(
+                "Current location search is available for US locations only. Please enter a US ZIP code or city."
+              );
+              return;
+            }
+
+            pendingSelection = { source: "coords", q: "", lat, lng };
+            await runSearchFromPending();
+          } finally {
+            currentLocInFlight = false;
           }
-
-          // Set pending coords and run immediately
-          pendingSelection = { source: "coords", q: "", lat, lng };
-          runSearchFromPending();
         },
-        () => locationDeniedAlert(),
+        () => {
+          currentLocInFlight = false;
+          locationDeniedAlert();
+        },
         { timeout: 15000, maximumAge: 0, enableHighAccuracy: false }
       );
     });
 
     console.log("[ETS-POPUP] ready");
   };
-
   // Prevent double init (in case Webflow swaps content / code runs twice)
   let didInit = false;
 
