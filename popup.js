@@ -21,7 +21,7 @@
   }
 
   // --- Your popup init (wrapped) ---
-  function initETSPopupNearest() {
+  window.initETSPopupNearest = function () {
     console.log("[ETS-POPUP] init");
 
     const NETLIFY_URL = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
