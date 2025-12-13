@@ -360,3 +360,89 @@
     boot();
   }
 })();
+
+
+<script src="https://link.msgsndr.com/js/form_embed.js"></script>
+
+  (function () {
+    // Root wrapper for the whole location finder popup
+    const ROOT_SELECTOR = ".loc-finder-popup-wrapper";
+
+    // Step wrappers you want to toggle
+    const STEP1_SELECTOR = ".find-your-nearby-gym";
+    const STEP2_SELECTOR = ".book-eval-popup.location-finder"; // form step
+    const STEP3_SELECTOR = ".book-eval-calendar"; // calendar step (optional)
+
+    // Buttons (the ones inside each location card)
+    const BOOK_BTN_SELECTOR = ".locations-ets a.primary-btn";
+
+    // Iframes in your DOM
+    const BOOKING_IFRAME_ID = "bookingFormIframe";
+    const CAL_IFRAME_ID = "calendarIframe";
+
+    const root = document.querySelector(ROOT_SELECTOR);
+    if (!root) return;
+
+    const step1 = root.querySelector(STEP1_SELECTOR);
+    const step2 = root.querySelector(STEP2_SELECTOR);
+    const step3 = root.querySelector(STEP3_SELECTOR);
+
+    const bookingIframe = root.querySelector("#" + BOOKING_IFRAME_ID);
+    const calendarIframe = root.querySelector("#" + CAL_IFRAME_ID);
+
+    function showStep2HideStep1() {
+      if (step1) step1.classList.add("d-none");
+      if (step2) step2.classList.remove("d-none");
+      // Leave step3 hidden unless you explicitly show it later
+    }
+
+    function embedBookingForm(formId) {
+      if (!bookingIframe || !formId) return;
+
+      // LeadConnector form widget src
+      const formSrc = "https://api.leadconnectorhq.com/widget/form/" + encodeURIComponent(formId);
+
+      bookingIframe.src = formSrc;
+
+      // These attributes help the form_embed.js widget initialize consistently
+      const inlineId = "inline-" + formId;
+      bookingIframe.id = inlineId;
+
+      bookingIframe.setAttribute("data-layout", "{'id':'INLINE'}");
+      bookingIframe.setAttribute("data-trigger-type", "alwaysShow");
+      bookingIframe.setAttribute("data-activation-type", "alwaysActivated");
+      bookingIframe.setAttribute("data-deactivation-type", "neverDeactivate");
+      bookingIframe.setAttribute("data-layout-iframe-id", inlineId);
+      bookingIframe.setAttribute("data-form-id", formId);
+      bookingIframe.setAttribute("title", "Evaluation Form");
+    }
+
+    function embedCalendar(calSrc, calId) {
+      if (!calendarIframe || !calSrc) return;
+
+      calendarIframe.src = calSrc;
+      if (calId) calendarIframe.id = calId;
+    }
+
+    // Click on "Book eval" inside location cards
+    document.addEventListener("click", function (e) {
+      const btn = e.target.closest(BOOK_BTN_SELECTOR);
+      if (!btn) return;
+
+      // Ensure it's part of THIS popup instance (important if you have multiple on page)
+      if (!root.contains(btn)) return;
+
+      e.preventDefault();
+
+      const formId = btn.getAttribute("data-booking-form-iframe-id") || "";
+      const calId  = btn.getAttribute("data-calendar-iframe-id") || "";
+      const calSrc = btn.getAttribute("data-calendar-iframe-src") || "";
+
+      // Embed iframes
+      embedBookingForm(formId);
+      embedCalendar(calSrc, calId);
+
+      // Toggle UI: hide step 1, show step 2
+      showStep2HideStep1();
+    });
+  })();
