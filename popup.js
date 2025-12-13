@@ -7,7 +7,12 @@
 
     const start = Date.now();
     const timer = setInterval(() => {
-      const ready = !!(window.google && google.maps && google.maps.places && google.maps.places.Autocomplete);
+      const ready = !!(
+        window.google &&
+        google.maps &&
+        google.maps.places &&
+        google.maps.places.Autocomplete
+      );
       if (ready) {
         clearInterval(timer);
         cb();
@@ -15,7 +20,9 @@
       }
       if (Date.now() - start > timeoutMs) {
         clearInterval(timer);
-        console.error("[ETS-POPUP] Google Places not ready within timeout. Check script load / key restrictions.");
+        console.error(
+          "[ETS-POPUP] Google Places not ready within timeout. Check script load / key restrictions."
+        );
       }
     }, intervalMs);
   }
@@ -24,18 +31,26 @@
   window.initETSPopupNearest = function () {
     console.log("[ETS-POPUP] init");
 
-    const NETLIFY_URL = "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
+    const NETLIFY_URL =
+      "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
     const LIMIT = 5;
 
     const form = document.getElementById("find-loc-form-popup");
     const input = document.getElementById("user-city-popup");
     const submitBtn = form?.querySelector('input[type="submit"], .w-button');
-    const useCurrentBtn = document.querySelector(".use-current-location-popup-btn");
-    const listContainer = document.querySelector(".secondary-locations.locations-popup .w-dyn-items");
+    const useCurrentBtn = document.querySelector(
+      ".use-current-location-popup-btn"
+    );
+    const listContainer = document.querySelector(
+      ".secondary-locations.locations-popup .w-dyn-items"
+    );
 
     if (!form || !input || !submitBtn || !listContainer) {
       console.error("[ETS-POPUP] Missing required DOM nodes", {
-        form: !!form, input: !!input, submitBtn: !!submitBtn, listContainer: !!listContainer
+        form: !!form,
+        input: !!input,
+        submitBtn: !!submitBtn,
+        listContainer: !!listContainer,
       });
       return;
     }
@@ -51,12 +66,14 @@
 
     // Loading UI
     let isLoading = false;
-    const originalBtnText = ("value" in submitBtn && submitBtn.value) ? submitBtn.value : "Search";
+    const originalBtnText =
+      "value" in submitBtn && submitBtn.value ? submitBtn.value : "Search";
 
     function setLoading(on) {
       isLoading = !!on;
       submitBtn.disabled = on;
-      if ("value" in submitBtn) submitBtn.value = on ? "Searching..." : originalBtnText;
+      if ("value" in submitBtn)
+        submitBtn.value = on ? "Searching..." : originalBtnText;
       listContainer.style.opacity = on ? "0.35" : "1";
       listContainer.style.transition = "opacity 180ms ease";
     }
@@ -66,11 +83,36 @@
     }
 
     // Template item cloning (keeps Webflow structure)
-    const templateItem = listContainer.querySelector(".w-dyn-item") || listContainer.querySelector("[role='listitem']");
+    const templateItem =
+      listContainer.querySelector(".w-dyn-item") ||
+      listContainer.querySelector("[role='listitem']");
     if (!templateItem) {
       console.error("[ETS-POPUP] No template list item found in list container");
       return;
     }
+
+    // ----------------------------
+    // IMPORTANT CHANGE:
+    // Do NOT call API on autocomplete selection.
+    // Only call API on Search button click (or Use current location click).
+    // We'll store a pending selection here:
+    // ----------------------------
+    let pendingSelection = {
+      source: "text", // "text" | "coords"
+      q: "",
+      lat: null,
+      lng: null,
+    };
+
+    // If user types after selecting a place, treat as text again
+    input.addEventListener("input", () => {
+      pendingSelection = {
+        source: "text",
+        q: input.value,
+        lat: null,
+        lng: null,
+      };
+    });
 
     function renderLocations(items = []) {
       listContainer.innerHTML = "";
@@ -87,12 +129,18 @@
       slice.forEach((data) => {
         const node = templateItem.cloneNode(true);
 
+        // Title
         const title = node.querySelector("h3");
         if (title) title.textContent = data?.name || "";
 
-        const addressText = node.querySelector(".directions-link .text-size-regular");
-        if (addressText) addressText.textContent = data?.address || data?.addressText || "";
+        // Address text
+        const addressText = node.querySelector(
+          ".directions-link .text-size-regular"
+        );
+        if (addressText)
+          addressText.textContent = data?.address || data?.addressText || "";
 
+        // Directions link
         const directionsLink = node.querySelector(".directions-link");
         if (directionsLink) {
           if (data?.lat != null && data?.lng != null) {
@@ -100,16 +148,49 @@
               data.lat + "," + data.lng
             )}`;
           } else if (data?.address) {
-            directionsLink.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(data.address)}`;
+            directionsLink.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+              data.address
+            )}`;
           } else {
             directionsLink.href = "#";
           }
         }
 
+        // Distance + time (remove d-none and fill text)
+        const distanceWrap = node.querySelector(".estimated-distance-in-miles");
+        const distanceTextEl = node.querySelector(".distance-text");
+        if (distanceTextEl) distanceTextEl.textContent = data?.distanceText || "";
+        if (distanceWrap) distanceWrap.classList.remove("d-none");
+
+        const driveWrap = node.querySelector(".estimated-drie-time-wrapper");
+        const driveTextEl = node.querySelector(".estimated-drive-time-text");
+        if (driveTextEl) driveTextEl.textContent = data?.durationText || "";
+        if (driveWrap) driveWrap.classList.remove("d-none");
+
+        // Book button (keep existing behavior + add new data attributes)
         const bookBtn = Array.from(node.querySelectorAll("a")).find((a) =>
           (a.textContent || "").toLowerCase().includes("book")
         );
-        if (bookBtn) bookBtn.href = data?.bookUrl || data?.bookingUrl || "#";
+
+        if (bookBtn) {
+          // Keep href if you still want it (optional)
+          bookBtn.href = data?.bookUrl || data?.bookingUrl || "#";
+
+          // NEW: attach iframe fields from API response
+          // (API returns: bookingFormIframeId, calendarIframeId, calendarIframeSrc)
+          bookBtn.setAttribute(
+            "data-booking-form-iframe-id",
+            data?.bookingFormIframeId || ""
+          );
+          bookBtn.setAttribute(
+            "data-calendar-iframe-id",
+            data?.calendarIframeId || ""
+          );
+          bookBtn.setAttribute(
+            "data-calendar-iframe-src",
+            data?.calendarIframeSrc || ""
+          );
+        }
 
         listContainer.appendChild(node);
       });
@@ -119,16 +200,39 @@
       const res = await fetch(NETLIFY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Request failed");
       return json.items || [];
     }
 
-    async function searchByText(q) {
-      const query = (q || "").trim();
-      if (!query || isLoading) return;
+    async function runSearchFromPending() {
+      if (isLoading) return;
+
+      // Only run from button click (or current location click)
+      if (pendingSelection.source === "coords") {
+        if (pendingSelection.lat == null || pendingSelection.lng == null) return;
+        setLoading(true);
+        try {
+          const items = await fetchNearest({
+            lat: pendingSelection.lat,
+            lng: pendingSelection.lng,
+            limit: LIMIT,
+          });
+          renderLocations(items);
+        } catch (err) {
+          console.error("[ETS-POPUP] coord search error", err);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Text search
+      const query = (pendingSelection.q || input.value || "").trim();
+      if (!query) return;
+
       setLoading(true);
       try {
         const items = await fetchNearest({ q: query, limit: LIMIT });
@@ -140,23 +244,13 @@
       }
     }
 
-    async function searchByCoords(lat, lng) {
-      setLoading(true);
-      try {
-        const items = await fetchNearest({ lat, lng, limit: LIMIT });
-        renderLocations(items);
-      } catch (err) {
-        console.error("[ETS-POPUP] coord search error", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    // Search button
+    // Search button (ONLY place we call API for typed/selected address)
     submitBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      searchByText(input.value);
+      // Ensure pending text mirrors input if user never triggered input event
+      if (pendingSelection.source === "text") pendingSelection.q = input.value;
+      runSearchFromPending();
     });
 
     // Ignore Enter if desired
@@ -170,34 +264,48 @@
     // Google Places Autocomplete (US only)
     const autocomplete = new google.maps.places.Autocomplete(input, {
       types: ["geocode"],
-      componentRestrictions: { country: "us" }
+      componentRestrictions: { country: "us" },
     });
 
+    // IMPORTANT CHANGE:
+    // Do NOT call API here. Just store the coords for later.
     autocomplete.addListener("place_changed", () => {
       const place = autocomplete.getPlace();
       const loc = place?.geometry?.location;
+
       if (loc) {
-        searchByCoords(loc.lat(), loc.lng());
+        pendingSelection = {
+          source: "coords",
+          q: input.value,
+          lat: loc.lat(),
+          lng: loc.lng(),
+        };
       } else {
-        searchByText(input.value);
+        pendingSelection = {
+          source: "text",
+          q: input.value,
+          lat: null,
+          lng: null,
+        };
       }
     });
 
     // US-only check for current location
     async function isUSLocation(lat, lng) {
-      // With Google loaded, we can safely geocode
       if (!google?.maps?.Geocoder) return true;
       const geocoder = new google.maps.Geocoder();
       return new Promise((resolve) => {
         geocoder.geocode({ location: { lat, lng } }, (results, status) => {
           if (status !== "OK" || !results?.[0]) return resolve(false);
-          const country = results[0].address_components?.find((c) => (c.types || []).includes("country"));
+          const country = results[0].address_components?.find((c) =>
+            (c.types || []).includes("country")
+          );
           resolve((country?.short_name || "").toUpperCase() === "US");
         });
       });
     }
 
-    // Use current location click
+    // Use current location click (still allowed to call API immediately)
     useCurrentBtn?.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -214,11 +322,15 @@
 
           const okUS = await isUSLocation(lat, lng);
           if (!okUS) {
-            alert("Current location search is available for US locations only. Please enter a US ZIP code or city.");
+            alert(
+              "Current location search is available for US locations only. Please enter a US ZIP code or city."
+            );
             return;
           }
 
-          searchByCoords(lat, lng);
+          // Set pending coords and run immediately
+          pendingSelection = { source: "coords", q: "", lat, lng };
+          runSearchFromPending();
         },
         () => locationDeniedAlert(),
         { timeout: 15000, maximumAge: 0, enableHighAccuracy: false }
@@ -226,7 +338,7 @@
     });
 
     console.log("[ETS-POPUP] ready");
-  }
+  };
 
   // Prevent double init (in case Webflow swaps content / code runs twice)
   let didInit = false;
