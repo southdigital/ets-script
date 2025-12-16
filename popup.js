@@ -449,6 +449,10 @@
       const calId  = btn.getAttribute("data-calendar-iframe-id") || "";
       const calSrc = btn.getAttribute("data-calendar-iframe-src") || "";
 
+      if (!formId || !calId || !calSrc) {
+        return;
+      }
+
       // Embed iframes
       embedBookingForm(formId);
       embedCalendar(calSrc, calId);
