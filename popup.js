@@ -1,8 +1,39 @@
 (function () {
-  // --- NEW CODE ONLY: waits for Google Places without touching existing callback ---
+  // ============================================================
+  // LOCATION FINDER POPUP (Scoped to .loc-finder-popup-wrapper)
+  // No conflicts with other popups on the page.
+  // ============================================================
+
+  const ROOT_SELECTOR = ".loc-finder-popup-wrapper";
+
+  // Search UI selectors (inside location finder popup)
+  const FORM_SELECTOR = "#find-loc-form-popup";
+  const INPUT_SELECTOR = "#user-city-popup";
+  const SEARCH_BTN_SELECTOR = "a.primary-btn";
+  const USE_CURRENT_SELECTOR = ".use-current-location-popup-btn";
+  const LIST_CONTAINER_SELECTOR = ".secondary-locations.locations-popup .w-dyn-items";
+
+  // Step toggles (inside location finder popup)
+  const STEP1_SELECTOR = ".find-your-nearby-gym";
+  const STEP2_SELECTOR = ".book-eval-popup.location-finder";
+  const STEP3_SELECTOR = ".book-eval-calendar";
+
+  // Book buttons inside rendered location cards (inside location finder popup)
+  const BOOK_BTN_SELECTOR = ".locations-ets a.book-eval-loc-popup";
+
+  // Iframes inside location finder popup (IMPORTANT: scoped via root)
+  const BOOKING_IFRAME_SELECTOR = "#bookingFormIframe";
+  const CAL_IFRAME_SELECTOR = "#calendarIframe";
+
+  // API config
+  const NETLIFY_URL =
+    "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
+  const LIMIT = 5;
+
+  // --- waits for Google Places without relying on global callback ---
   function whenGooglePlacesReady(cb, opts) {
     opts = opts || {};
-    const timeoutMs = opts.timeoutMs ?? 15000;
+    const timeoutMs = opts.timeoutMs ?? 20000;
     const intervalMs = opts.intervalMs ?? 100;
 
     const start = Date.now();
@@ -13,39 +44,46 @@
         google.maps.places &&
         google.maps.places.Autocomplete
       );
+
       if (ready) {
         clearInterval(timer);
         cb();
         return;
       }
+
       if (Date.now() - start > timeoutMs) {
         clearInterval(timer);
         console.error(
-          "[ETS-POPUP] Google Places not ready within timeout. Check script load / key restrictions."
+          "[LOC-FINDER] Google Places not ready in time. Check script load/key restrictions."
         );
       }
     }, intervalMs);
   }
 
-  // --- Your popup init (wrapped) ---
-  window.initETSPopupNearest = function () {
-    console.log("[ETS-POPUP] init");
+  function boot() {
+    const root = document.querySelector(ROOT_SELECTOR);
+    if (!root) return;
 
-    const NETLIFY_URL =
-      "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
-    const LIMIT = 5;
+    // Prevent double init (Webflow can re-run embeds)
+    if (root.dataset.locFinderInit === "1") return;
+    root.dataset.locFinderInit = "1";
 
-    const form = document.getElementById("find-loc-form-popup");
-    const input = document.getElementById("user-city-popup");
+    const form = root.querySelector(FORM_SELECTOR);
+    const input = root.querySelector(INPUT_SELECTOR);
+    const submitBtn = form ? form.querySelector(SEARCH_BTN_SELECTOR) : null;
 
-    // Search button is <a> in your case
-    const submitBtn = form?.querySelector("a.primary-btn");
+    const useCurrentBtn = root.querySelector(USE_CURRENT_SELECTOR);
+    const listContainer = root.querySelector(LIST_CONTAINER_SELECTOR);
 
-    const useCurrentBtn = document.querySelector(".use-current-location-popup-btn");
-    const listContainer = document.querySelector(".secondary-locations.locations-popup .w-dyn-items");
+    const step1 = root.querySelector(STEP1_SELECTOR);
+    const step2 = root.querySelector(STEP2_SELECTOR);
+    const step3 = root.querySelector(STEP3_SELECTOR);
+
+    const bookingIframe = root.querySelector(BOOKING_IFRAME_SELECTOR);
+    const calendarIframe = root.querySelector(CAL_IFRAME_SELECTOR);
 
     if (!form || !input || !submitBtn || !listContainer) {
-      console.error("[ETS-POPUP] Missing required DOM nodes", {
+      console.error("[LOC-FINDER] Missing required DOM nodes", {
         form: !!form,
         input: !!input,
         submitBtn: !!submitBtn,
@@ -54,16 +92,7 @@
       return;
     }
 
-    // ---------------------------------------------------------
-    // FIX #1 (double init): prevent binding listeners more than once
-    // ---------------------------------------------------------
-    if (form.dataset.etsPopupInit === "1") {
-      console.log("[ETS-POPUP] already initialized, skipping listeners");
-      return;
-    }
-    form.dataset.etsPopupInit = "1";
-
-    // Prevent form submit
+    // Prevent native submit
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -74,8 +103,6 @@
 
     // Loading UI
     let isLoading = false;
-
-    // For <a> use textContent
     const originalBtnText = (submitBtn.textContent || "").trim() || "Search";
 
     function setLoading(on) {
@@ -84,12 +111,12 @@
       if (on) {
         submitBtn.classList.add("is-loading");
         submitBtn.setAttribute("aria-disabled", "true");
-        submitBtn.style.pointerEvents = "none"; // simulate disabled
+        submitBtn.style.pointerEvents = "none";
         submitBtn.textContent = "Searching...";
       } else {
         submitBtn.classList.remove("is-loading");
         submitBtn.removeAttribute("aria-disabled");
-        submitBtn.style.pointerEvents = ""; // restore
+        submitBtn.style.pointerEvents = "";
         submitBtn.textContent = originalBtnText;
       }
 
@@ -105,13 +132,14 @@
     const templateItem =
       listContainer.querySelector(".w-dyn-item") ||
       listContainer.querySelector("[role='listitem']");
+
     if (!templateItem) {
-      console.error("[ETS-POPUP] No template list item found in list container");
+      console.error("[LOC-FINDER] No template list item found in list container");
       return;
     }
 
     // Do NOT call API on autocomplete selection.
-    // Only call API on Search button click (or Use current location click).
+    // Only call API on Search click or Use current location click.
     let pendingSelection = {
       source: "text", // "text" | "coords"
       q: "",
@@ -133,10 +161,12 @@
       listContainer.innerHTML = "";
 
       const slice = items.slice(0, LIMIT);
+
       if (!slice.length) {
         const empty = document.createElement("div");
         empty.className = "w-dyn-empty";
-        empty.innerHTML = `<div class="text-size-regular text-color-inverse">No nearby locations found.</div>`;
+        empty.innerHTML =
+          '<div class="text-size-regular text-color-inverse">No nearby locations found.</div>';
         listContainer.appendChild(empty);
         return;
       }
@@ -156,19 +186,19 @@
         const directionsLink = node.querySelector(".directions-link");
         if (directionsLink) {
           if (data?.lat != null && data?.lng != null) {
-            directionsLink.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
-              data.lat + "," + data.lng
-            )}`;
+            directionsLink.href =
+              "https://www.google.com/maps/dir/?api=1&destination=" +
+              encodeURIComponent(data.lat + "," + data.lng);
           } else if (data?.address) {
-            directionsLink.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
-              data.address
-            )}`;
+            directionsLink.href =
+              "https://www.google.com/maps/dir/?api=1&destination=" +
+              encodeURIComponent(data.address);
           } else {
             directionsLink.href = "#";
           }
         }
 
-        // Distance + time (remove d-none and fill text)
+        // Distance + time
         const distanceWrap = node.querySelector(".estimated-distance-in-miles");
         const distanceTextEl = node.querySelector(".distance-text");
         if (distanceTextEl) distanceTextEl.textContent = data?.distanceText || "";
@@ -180,13 +210,13 @@
         if (driveWrap) driveWrap.classList.remove("d-none");
 
         // Book button + iframe fields
-        const bookBtn = Array.from(node.querySelectorAll("a")).find((a) =>
-          (a.textContent || "").toLowerCase().includes("book")
-        );
+        const bookBtn = node.querySelector("a.book-eval-loc-popup") ||
+          Array.from(node.querySelectorAll("a")).find((a) =>
+            (a.textContent || "").toLowerCase().includes("book")
+          );
 
         if (bookBtn) {
           bookBtn.href = data?.bookUrl || data?.bookingUrl || "#";
-
           bookBtn.setAttribute("data-booking-form-iframe-id", data?.bookingFormIframeId || "");
           bookBtn.setAttribute("data-calendar-iframe-id", data?.calendarIframeId || "");
           bookBtn.setAttribute("data-calendar-iframe-src", data?.calendarIframeSrc || "");
@@ -202,6 +232,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Request failed");
       return json.items || [];
@@ -210,7 +241,7 @@
     async function runSearchFromPending() {
       if (isLoading) return;
 
-      // Coords
+      // Coords search
       if (pendingSelection.source === "coords") {
         if (pendingSelection.lat == null || pendingSelection.lng == null) return;
 
@@ -223,14 +254,14 @@
           });
           renderLocations(items);
         } catch (err) {
-          console.error("[ETS-POPUP] coord search error", err);
+          console.error("[LOC-FINDER] coord search error", err);
         } finally {
           setLoading(false);
         }
         return;
       }
 
-      // Text
+      // Text search
       const query = (pendingSelection.q || input.value || "").trim();
       if (!query) return;
 
@@ -239,7 +270,7 @@
         const items = await fetchNearest({ q: query, limit: LIMIT });
         renderLocations(items);
       } catch (err) {
-        console.error("[ETS-POPUP] text search error", err);
+        console.error("[LOC-FINDER] text search error", err);
       } finally {
         setLoading(false);
       }
@@ -254,7 +285,7 @@
       runSearchFromPending();
     });
 
-    // Ignore Enter if desired
+    // Ignore Enter
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -268,7 +299,6 @@
       componentRestrictions: { country: "us" },
     });
 
-    // Do NOT call API here — only store selection
     autocomplete.addListener("place_changed", () => {
       const place = autocomplete.getPlace();
       const loc = place?.geometry?.location;
@@ -305,16 +335,13 @@
       });
     }
 
-    // ---------------------------------------------------------
-    // FIX #2 (double alerts): lock while geolocation is in-flight
-    // ---------------------------------------------------------
     let currentLocInFlight = false;
 
     useCurrentBtn?.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
 
-      if (currentLocInFlight) return; // prevents double triggers
+      if (currentLocInFlight) return;
       currentLocInFlight = true;
 
       if (!navigator.geolocation) {
@@ -351,71 +378,24 @@
       );
     });
 
-    console.log("[ETS-POPUP] ready");
-  };
-  // Prevent double init (in case Webflow swaps content / code runs twice)
-  let didInit = false;
-
-  function safeInit() {
-    if (didInit) return;
-    didInit = true;
-    initETSPopupNearest();
-  }
-
-  // Run after DOM is ready AND Places is ready
-  function boot() {
-    whenGooglePlacesReady(safeInit, { timeoutMs: 20000, intervalMs: 100 });
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
-})();
-
-
-  (function () {
-    // Root wrapper for the whole location finder popup
-    const ROOT_SELECTOR = ".loc-finder-popup-wrapper";
-
-    // Step wrappers you want to toggle
-    const STEP1_SELECTOR = ".find-your-nearby-gym";
-    const STEP2_SELECTOR = ".book-eval-popup.location-finder"; // form step
-    const STEP3_SELECTOR = ".book-eval-calendar"; // calendar step (optional)
-
-    // Buttons (the ones inside each location card)
-    const BOOK_BTN_SELECTOR = ".locations-ets a.book-eval-loc-popup";
-
-    // Iframes in your DOM
-    const BOOKING_IFRAME_ID = "bookingFormIframe";
-    const CAL_IFRAME_ID = "calendarIframe";
-
-    const root = document.querySelector(ROOT_SELECTOR);
-    if (!root) return;
-
-    const step1 = root.querySelector(STEP1_SELECTOR);
-    const step2 = root.querySelector(STEP2_SELECTOR);
-    const step3 = root.querySelector(STEP3_SELECTOR);
-
-    const bookingIframe = root.querySelector("#" + BOOKING_IFRAME_ID);
-    const calendarIframe = root.querySelector("#" + CAL_IFRAME_ID);
-
-    function showStep2HideStep1() {
-      if (step1) step1.classList.add("d-none");
-      if (step2) step2.classList.remove("d-none");
-      // Leave step3 hidden unless you explicitly show it later
+    // -----------------------------
+    // Step helpers (scoped)
+    // -----------------------------
+    function showStep(step) {
+      // Step1 visible by default, step2/3 hidden by d-none in your markup
+      if (step1) step1.classList.toggle("d-none", step !== 1);
+      if (step2) step2.classList.toggle("d-none", step !== 2);
+      if (step3) step3.classList.toggle("d-none", step !== 3);
     }
 
     function embedBookingForm(formId) {
       if (!bookingIframe || !formId) return;
 
-      // LeadConnector form widget src
-      const formSrc = "https://api.leadconnectorhq.com/widget/form/" + encodeURIComponent(formId);
+      const formSrc =
+        "https://api.leadconnectorhq.com/widget/form/" + encodeURIComponent(formId);
 
       bookingIframe.src = formSrc;
 
-      // These attributes help the form_embed.js widget initialize consistently
       const inlineId = "inline-" + formId;
       bookingIframe.id = inlineId;
 
@@ -430,17 +410,18 @@
 
     function embedCalendar(calSrc, calId) {
       if (!calendarIframe || !calSrc) return;
-
       calendarIframe.src = calSrc;
       if (calId) calendarIframe.id = calId;
     }
 
-    // Click on "Book eval" inside location cards
+    // -----------------------------
+    // Book button click (scoped)
+    // -----------------------------
     document.addEventListener("click", function (e) {
       const btn = e.target.closest(BOOK_BTN_SELECTOR);
       if (!btn) return;
 
-      // Ensure it's part of THIS popup instance (important if you have multiple on page)
+      // Must be inside THIS popup root
       if (!root.contains(btn)) return;
 
       e.preventDefault();
@@ -449,54 +430,60 @@
       const calId  = btn.getAttribute("data-calendar-iframe-id") || "";
       const calSrc = btn.getAttribute("data-calendar-iframe-src") || "";
 
-      if (!formId || !calId || !calSrc) {
-        return;
-      }
+      // Require at least formId + calSrc to proceed
+      if (!formId || !calSrc) return;
 
-      // Embed iframes
       embedBookingForm(formId);
       embedCalendar(calSrc, calId);
 
-      // Toggle UI: hide step 1, show step 2
-      showStep2HideStep1();
+      // Move to booking step
+      showStep(2);
     });
-  })();
 
+    // -----------------------------
+    // Submission tracking (scoped)
+    // -----------------------------
+    let fired = false;
 
-  // Handle and track booking form submission 
+    window.addEventListener("message", function (event) {
+      const data = event.data;
 
+      // Ignore iframe resizer chatter
+      if (typeof data === "string" && data.startsWith("[iFrameSizer]")) return;
 
-(function () {
-  let fired = false;
+      // LeadConnector submission event
+      if (Array.isArray(data) && data[0] === "set-sticky-contacts") {
+        if (fired) return;
 
-  window.addEventListener("message", function (event) {
-    const data = event.data;
+        // Only react if THIS popup's booking iframe is active
+        if (!bookingIframe || !bookingIframe.src) return;
 
-    // Ignore iframe resizer chatter
-    if (typeof data === "string" && data.startsWith("[iFrameSizer]")) return;
+        fired = true;
+        console.log("[LOC-FINDER] ✅ form submitted (scoped)");
 
-    // Detect LeadConnector submission
-    if (Array.isArray(data) && data[0] === "set-sticky-contacts") {
-      if (fired) return;
-      fired = true;
-
-      console.log("✅ FORM SUBMITTED");
-
-      // 🔽 TOGGLE CLASSES
-      const firstForm = document.querySelector(".book-eval-popup.location-finder");
-      const secondForm = document.querySelector(".book-eval-calendar");
-
-      if (firstForm) {
-        firstForm.classList.add("d-none");
-      } else {
-        console.warn("⚠️ .first-form not found");
+        // Advance to calendar step (inside this popup only)
+        showStep(3);
       }
+    });
 
-      if (secondForm) {
-        secondForm.classList.remove("d-none");
-      } else {
-        console.warn("⚠️ .second-form not found");
-      }
-    }
-  });
+    // If user returns to step 1, allow submission again later
+    // (Optional but helps if popup is re-used without reload)
+    const obs = new MutationObserver(() => {
+      const step1Visible = step1 && !step1.classList.contains("d-none");
+      if (step1Visible) fired = false;
+    });
+    if (step1) obs.observe(step1, { attributes: true, attributeFilter: ["class"] });
+
+    console.log("[LOC-FINDER] ready");
+  }
+
+  function start() {
+    whenGooglePlacesReady(boot, { timeoutMs: 20000, intervalMs: 100 });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
+  }
 })();
