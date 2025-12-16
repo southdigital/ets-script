@@ -385,7 +385,7 @@
     const STEP3_SELECTOR = ".book-eval-calendar"; // calendar step (optional)
 
     // Buttons (the ones inside each location card)
-    const BOOK_BTN_SELECTOR = ".locations-ets a.primary-btn";
+    const BOOK_BTN_SELECTOR = ".locations-ets a.book-eval-loc-popup";
 
     // Iframes in your DOM
     const BOOKING_IFRAME_ID = "bookingFormIframe";
