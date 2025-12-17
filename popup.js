@@ -16,7 +16,7 @@
   // Step toggles (inside location finder popup)
   const STEP1_SELECTOR = ".find-your-nearby-gym";
   const STEP2_SELECTOR = ".book-eval-popup.location-finder";
-  const STEP3_SELECTOR = ".book-eval-calendar";
+  const STEP3_SELECTOR = ".loc-finder-popup-wrapper .book-eval-calendar";
 
   // Book buttons inside rendered location cards (inside location finder popup)
   const BOOK_BTN_SELECTOR = ".locations-ets a.book-eval-loc-popup";
@@ -461,7 +461,10 @@
         fired = true;
         console.log("[LOC-FINDER] ✅ form submitted (scoped)");
 
-        // Advance to calendar step (inside this popup only)
+        const popup = document.querySelector(".loc-finder-popup-wrapper");
+        if (!popup) return;
+        if (window.getComputedStyle(popup).display === "none") return;
+
         showStep(3);
       }
     });
