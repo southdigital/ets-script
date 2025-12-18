@@ -320,19 +320,52 @@ function initETSLocationFinder() {
 
   // --- SEARCHING UI state ------------------------------------------
   let isSearchingUI = false;
+  let originalSearchButtonLabel = null;
+
+  function setSearchButtonLabel(text) {
+    if (!searchButton) return;
+
+    // store original once
+    if (originalSearchButtonLabel === null) {
+      if ('value' in searchButton && typeof searchButton.value === 'string' && searchButton.value) {
+        originalSearchButtonLabel = searchButton.value;
+      } else {
+        originalSearchButtonLabel = searchButton.textContent;
+      }
+    }
+
+    if ('value' in searchButton && typeof searchButton.value === 'string') {
+      searchButton.value = text;
+    } else {
+      searchButton.textContent = text;
+    }
+  }
+
+  function restoreSearchButtonLabel() {
+    if (!searchButton) return;
+    if (originalSearchButtonLabel === null) return;
+
+    if ('value' in searchButton && typeof searchButton.value === 'string') {
+      searchButton.value = originalSearchButtonLabel;
+    } else {
+      searchButton.textContent = originalSearchButtonLabel;
+    }
+  }
 
   function setSearchingUIState(isOn) {
     if (isSearchingUI === isOn) return;
     isSearchingUI = isOn;
 
-    if (searchInput) {
-      searchInput.value = isOn ? 'seraching...' : 'search';
-    }
+    // button label
+    if (isOn) setSearchButtonLabel('seraching...');
+    else restoreSearchButtonLabel();
 
+    // cards opacity
     locations.forEach(loc => {
       if (loc && loc.cardEl) loc.cardEl.style.opacity = isOn ? '0.5' : '1';
     });
   }
+
 
   let autocomplete = null;
   if (searchInput && google.maps.places) {
@@ -417,6 +450,7 @@ function initETSLocationFinder() {
     const query = searchInput.value.trim();
     if (!query) return;
 
+    setSearchingUIState(true);
     geocodeAndCalculateFromQuery(query, { flyTo: true, flyZoom: 6 });
   }
 
@@ -430,14 +464,7 @@ function initETSLocationFinder() {
       }
     });
 
-    // ✅ requested: when clicked on search input -> seraching... + opacity 0.5
-    searchInput.addEventListener('focus', () => {
-      setSearchingUIState(true);
-    });
 
-    searchInput.addEventListener('click', () => {
-      setSearchingUIState(true);
-    });
   }
 
   // --- 5) Distance Matrix & user location integration ---------------
