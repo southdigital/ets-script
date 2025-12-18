@@ -28,7 +28,7 @@
   // API config
   const NETLIFY_URL =
     "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
-  const LIMIT = 5;
+  const LIMIT = 3;
 
   // --- waits for Google Places without relying on global callback ---
   function whenGooglePlacesReady(cb, opts) {
