@@ -147,7 +147,6 @@ function initETSLocationFinder() {
   }
 
   // --- 4) Popup HTML -------------------------------------------------
-  // (Keep your original popup HTML if you want; I kept it minimal here.)
   function buildPopupHTML(loc) {
     const distanceClass = loc.distanceText
       ? 'distance-in-miles-wrapper popup'
@@ -303,7 +302,7 @@ function initETSLocationFinder() {
           openPopup: true,
           scrollToCard: false,
           bringToTop: true,
-          setCardActive: false,
+          setCardActive: true, // ✅ updated
           setMarkerActive: true
         });
       });
@@ -311,6 +310,133 @@ function initETSLocationFinder() {
 
     locations.forEach(loc => {
       loc.cardEl.style.cursor = 'default';
+    });
+  }
+
+  // --- 6) Places + Search -------------------------------------------
+  const searchInput = document.getElementById('location-or-zipcode');
+  const searchForm = document.getElementById('email-form');
+  const searchButton = document.querySelector('.form-find-gym .w-button');
+
+  // --- SEARCHING UI state ------------------------------------------
+  let isSearchingUI = false;
+
+  function setSearchingUIState(isOn) {
+    if (isSearchingUI === isOn) return;
+    isSearchingUI = isOn;
+
+    if (searchInput) {
+      searchInput.value = isOn ? 'seraching...' : 'search';
+    }
+
+    locations.forEach(loc => {
+      if (loc && loc.cardEl) loc.cardEl.style.opacity = isOn ? '0.5' : '1';
+    });
+  }
+
+  let autocomplete = null;
+  if (searchInput && google.maps.places) {
+    autocomplete = new google.maps.places.Autocomplete(searchInput, {
+      types: ['geocode'],
+      componentRestrictions: { country: 'us' }
+    });
+  }
+
+  const geocoder = new google.maps.Geocoder();
+
+  function getQueryFromUrl() {
+    const url = new URL(window.location.href);
+    return (url.searchParams.get('q') || '').trim();
+  }
+
+  function geocodeQuery(query) {
+    return new Promise((resolve, reject) => {
+      geocoder.geocode({ address: query, componentRestrictions: { country: 'US' } }, (results, status) => {
+        if (status === 'OK' && results?.[0]?.geometry?.location) {
+          const loc = results[0].geometry.location;
+          resolve({ gLocation: loc, lat: loc.lat(), lng: loc.lng() });
+        } else {
+          reject(status);
+        }
+      });
+    });
+  }
+
+  function geocodeAndCalculateFromQuery(query, opts) {
+    const options = Object.assign(
+      {
+        flyTo: true,
+        flyZoom: 6
+      },
+      opts || {}
+    );
+
+    setSearchingUIState(true);
+
+    geocoder.geocode({ address: query, componentRestrictions: { country: 'US' } }, (results, status) => {
+      if (status === 'OK' && results[0]?.geometry?.location) {
+        const location = results[0].geometry.location;
+        const userLat = location.lat();
+        const userLng = location.lng();
+
+        updateUserLocationMarker(userLat, userLng);
+
+        if (map && options.flyTo) {
+          map.flyTo({
+            center: [userLng, userLat],
+            zoom: options.flyZoom,
+            speed: 1.4,
+            curve: 1.4,
+            essential: true
+          });
+        }
+
+        calculateAndApplyDistances(location, {
+          autoSelectNearest: false,
+          fitMapToUserAndNearest: false
+        });
+      } else {
+        console.warn('Geocoding failed:', status);
+        setSearchingUIState(false);
+      }
+    });
+  }
+
+  if (searchForm) {
+    searchForm.addEventListener('submit', e => {
+      e.preventDefault();
+      return false;
+    });
+  }
+
+  function handleSearchButtonClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!searchInput) return;
+    const query = searchInput.value.trim();
+    if (!query) return;
+
+    geocodeAndCalculateFromQuery(query, { flyTo: true, flyZoom: 6 });
+  }
+
+  if (searchButton) searchButton.addEventListener('click', handleSearchButtonClick);
+
+  if (searchInput) {
+    searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSearchButtonClick(e);
+      }
+    });
+
+    // ✅ requested: when clicked on search input -> seraching... + opacity 0.5
+    searchInput.addEventListener('focus', () => {
+      setSearchingUIState(true);
+    });
+
+    searchInput.addEventListener('click', () => {
+      setSearchingUIState(true);
     });
   }
 
@@ -328,6 +454,8 @@ function initETSLocationFinder() {
     );
 
     if (!locations.length) return;
+
+    setSearchingUIState(true);
 
     const promises = [];
 
@@ -414,6 +542,9 @@ function initETSLocationFinder() {
     } catch (err) {
       console.error('Distance Matrix error:', err);
       hideDistanceUI();
+    } finally {
+      // ✅ requested: after response + DOM updated -> back to search + opacity 1
+      setSearchingUIState(false);
     }
   }
 
@@ -449,7 +580,6 @@ function initETSLocationFinder() {
       return;
     }
 
-    // map may not exist yet; marker update will no-op until map exists
     updateUserLocationMarker(latitude, longitude);
 
     const originLatLng = new google.maps.LatLng(latitude, longitude);
@@ -499,107 +629,6 @@ function initETSLocationFinder() {
     });
   }
 
-  // --- 6) Places + Search -------------------------------------------
-  const searchInput = document.getElementById('location-or-zipcode');
-  const searchForm = document.getElementById('email-form');
-  const searchButton = document.querySelector('.form-find-gym .w-button');
-
-  let autocomplete = null;
-  if (searchInput && google.maps.places) {
-    autocomplete = new google.maps.places.Autocomplete(searchInput, {
-      types: ['geocode'],
-      componentRestrictions: { country: 'us' }
-    });
-  }
-
-  const geocoder = new google.maps.Geocoder();
-
-  function getQueryFromUrl() {
-    const url = new URL(window.location.href);
-    return (url.searchParams.get('q') || '').trim();
-  }
-
-  function geocodeQuery(query) {
-    return new Promise((resolve, reject) => {
-      geocoder.geocode({ address: query, componentRestrictions: { country: 'US' } }, (results, status) => {
-        if (status === 'OK' && results?.[0]?.geometry?.location) {
-          const loc = results[0].geometry.location;
-          resolve({ gLocation: loc, lat: loc.lat(), lng: loc.lng() });
-        } else {
-          reject(status);
-        }
-      });
-    });
-  }
-
-  function geocodeAndCalculateFromQuery(query, opts) {
-    const options = Object.assign(
-      {
-        // when user clicks Search on this page: fly to searched area
-        flyTo: true,
-        flyZoom: 6
-      },
-      opts || {}
-    );
-
-    geocoder.geocode({ address: query, componentRestrictions: { country: 'US' } }, (results, status) => {
-      if (status === 'OK' && results[0]?.geometry?.location) {
-        const location = results[0].geometry.location;
-        const userLat = location.lat();
-        const userLng = location.lng();
-
-        updateUserLocationMarker(userLat, userLng);
-
-        // ONLY flyTo when requested
-        if (map && options.flyTo) {
-          map.flyTo({
-            center: [userLng, userLat],
-            zoom: options.flyZoom,
-            speed: 1.4,
-            curve: 1.4,
-            essential: true
-          });
-        }
-
-        calculateAndApplyDistances(location, {
-          autoSelectNearest: false,
-          fitMapToUserAndNearest: false
-        });
-      } else {
-        console.warn('Geocoding failed:', status);
-      }
-    });
-  }
-
-  if (searchForm) {
-    searchForm.addEventListener('submit', e => {
-      e.preventDefault();
-      return false;
-    });
-  }
-
-  function handleSearchButtonClick(e) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!searchInput) return;
-    const query = searchInput.value.trim();
-    if (!query) return;
-
-    geocodeAndCalculateFromQuery(query, { flyTo: true, flyZoom: 6 });
-  }
-
-  if (searchButton) searchButton.addEventListener('click', handleSearchButtonClick);
-
-  if (searchInput) {
-    searchInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSearchButtonClick(e);
-      }
-    });
-  }
-
   // --- 7) Map init (IMPORTANT: centered by URL query if present) -----
   function initMapWithCenter(centerLngLat, initialZoom, animateToZoom) {
     if (!window.mapboxgl) {
@@ -627,32 +656,28 @@ function initETSLocationFinder() {
     map.on('load', () => {
       createMarkersAndWireCards();
 
-      // ✅ Only runs when you passed animateToZoom (i.e., URL query case)
       if (typeof animateToZoom === 'number') {
         map.easeTo({
           center: [centerLngLat.lng, centerLngLat.lat],
           zoom: animateToZoom,
           duration: 900,
           essential: true,
-          offset: [0, 30] // optional subtle settle
+          offset: [0, 30]
         });
       }
     });
   }
 
-
   // --- 8) Bootstrapping logic ---------------------------------------
   (async function bootstrap() {
     const urlQuery = getQueryFromUrl();
 
-    // Geolocate on load (same as your old behavior)
     if ('geolocation' in navigator) {
       tryGeolocateAndCalculate(false);
     } else {
       hideDistanceUI();
     }
 
-    // Wire "Use current location"
     const useCurrentLocationRow = document.querySelector(
       '.find_ets-location-searchbox .flex.align-center.gap-6.margin-top-tiny'
     );
@@ -663,36 +688,30 @@ function initETSLocationFinder() {
       });
     }
 
-    // CASE A: URL has q -> geocode first -> init map already centered -> run distances (no flyTo)
     if (urlQuery) {
       try {
         if (searchInput) searchInput.value = urlQuery;
 
         const { gLocation, lat, lng } = await geocodeQuery(urlQuery);
 
-        initMapWithCenter({ lat, lng }, 4, 6); // start a bit zoomed out, ease to final zoom
+        initMapWithCenter({ lat, lng }, 4, 6);
 
-        // Once map exists, show user marker too
         updateUserLocationMarker(lat, lng);
 
-        // Do the same “search process” but without flying (map already centered)
         calculateAndApplyDistances(gLocation, {
           autoSelectNearest: false,
           fitMapToUserAndNearest: false
         });
 
-        hasDoneInitialCameraMove = true; // skip densest-area animation
+        hasDoneInitialCameraMove = true;
         return;
       } catch (err) {
         console.warn('URL query geocode failed, falling back to default map:', err);
-        // fall through
       }
     }
 
-    // CASE B: No URL query -> behave as before
     initMapWithCenter({ lng: -98.5795, lat: 39.8283 }, 3);
 
-    // keep your "densest area" first-load behavior
     map.on('load', () => {
       centerMapOnDensestArea();
     });
