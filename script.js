@@ -205,6 +205,26 @@ function initETSLocationFinder() {
     `;
   }
 
+  function clearActiveLocation() {
+    if (activeLocationId === null) return;
+
+    const prev = locations.find(l => l.id === activeLocationId);
+    if (!prev) return;
+
+    prev.cardEl.classList.remove('is-active');
+
+    if (prev.marker && prev.marker.getElement()) {
+      prev.marker.getElement().classList.remove('is-active');
+    }
+
+    activeLocationId = null;
+
+    if (activePopup && activePopup.isOpen()) {
+      activePopup.remove();
+    }
+    activePopup = null;
+  }
+
   function selectLocation(locationId, options) {
     const opts = Object.assign(
       {
@@ -450,6 +470,7 @@ function initETSLocationFinder() {
     const query = searchInput.value.trim();
     if (!query) return;
 
+    clearActiveLocation();
     setSearchingUIState(true);
     geocodeAndCalculateFromQuery(query, { flyTo: true, flyZoom: 6 });
   }
@@ -711,6 +732,7 @@ function initETSLocationFinder() {
     if (useCurrentLocationRow && 'geolocation' in navigator) {
       useCurrentLocationRow.style.cursor = 'pointer';
       useCurrentLocationRow.addEventListener('click', () => {
+        clearActiveLocation(); 
         tryGeolocateAndCalculate(true);
       });
     }
