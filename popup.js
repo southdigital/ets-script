@@ -217,8 +217,8 @@
 
         if (bookBtn) {
           bookBtn.href = data?.bookUrl || data?.bookingUrl || "#";
-          bookBtn.setAttribute("data-booking-form-iframe-id", data?.bookingFormIframeId || "");
-          bookBtn.setAttribute("data-calendar-iframe-id", data?.calendarIframeId || "");
+          bookBtn.setAttribute("data-booking-form-iframe-id", data?.calendarIframeId || "");
+          bookBtn.setAttribute("data-calendar-iframe-id", data?.bookingFormIframeId || "");
           bookBtn.setAttribute("data-calendar-iframe-src", data?.calendarIframeSrc || "");
         }
 
