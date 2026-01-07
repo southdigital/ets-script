@@ -59,6 +59,49 @@ function initETSLocationFinder() {
     return;
   }
 
+  // --- NEW: Haversine helpers + show/hide locations -------------------
+  const TOP_NEAREST_COUNT = 3;
+
+  function toRad(deg) {
+    return (deg * Math.PI) / 180;
+  }
+
+  // Returns meters
+  function haversineMeters(lat1, lng1, lat2, lng2) {
+    const R = 6371000; // Earth radius meters
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  function setLocationVisibility(loc, isVisible) {
+    // Hide/show card (Webflow item wrapper preferred)
+    const el = loc.itemWrapper || loc.cardEl;
+    if (el) el.classList.toggle('d-none', !isVisible);
+
+    // Hide/show marker
+    if (loc.marker && loc.marker.getElement()) {
+      loc.marker.getElement().style.display = isVisible ? '' : 'none';
+    }
+  }
+
+  function showOnlyLocationsById(allowedIdsSet) {
+    locations.forEach(loc => {
+      setLocationVisibility(loc, allowedIdsSet.has(loc.id));
+    });
+  }
+
+  function resetAllLocationVisibility() {
+    locations.forEach(loc => setLocationVisibility(loc, true));
+  }
+
+
   // --- 2) Distance UI helpers ---------------------------------------
   function hideDistanceUI() {
     locations.forEach(loc => {
@@ -306,6 +349,13 @@ function initETSLocationFinder() {
         closeOnClick: true
       }).setHTML(buildPopupHTML(loc));
 
+      // ✅ NEW: when popup closes, remove active state (only if it's the active one)
+      popup.on('close', () => {
+        if (activeLocationId === loc.id) {
+          clearActiveLocation();
+        }
+      });
+
       const marker = new mapboxgl.Marker(markerEl)
         .setLngLat([loc.lng, loc.lat])
         .setPopup(popup)
@@ -322,7 +372,7 @@ function initETSLocationFinder() {
           openPopup: true,
           scrollToCard: false,
           bringToTop: true,
-          setCardActive: true, // ✅ updated
+          setCardActive: true,
           setMarkerActive: true
         });
       });
@@ -505,13 +555,48 @@ function initETSLocationFinder() {
 
     setSearchingUIState(true);
 
-    const promises = [];
+    try {
+      // Ensure user marker reference stays consistent
+      // originLatLng is a google.maps.LatLng already in your code usage
+      const originLat = typeof originLatLng.lat === 'function' ? originLatLng.lat() : originLatLng.lat;
+      const originLng = typeof originLatLng.lng === 'function' ? originLatLng.lng() : originLatLng.lng;
 
-    for (let i = 0; i < locations.length; i += MAX_DESTINATIONS_PER_REQUEST) {
-      const chunk = locations.slice(i, i + MAX_DESTINATIONS_PER_REQUEST);
-      const destinations = chunk.map(loc => new google.maps.LatLng(loc.lat, loc.lng));
+      // --- 1) Haversine filter: find top 3 nearest candidates -----------
+      const ranked = locations
+        .filter(l => typeof l.lat === 'number' && typeof l.lng === 'number' && !Number.isNaN(l.lat) && !Number.isNaN(l.lng))
+        .map(l => ({
+          loc: l,
+          hMeters: haversineMeters(originLat, originLng, l.lat, l.lng)
+        }))
+        .sort((a, b) => a.hMeters - b.hMeters);
 
-      const p = new Promise((resolve, reject) => {
+      const top = ranked.slice(0, TOP_NEAREST_COUNT).map(x => x.loc);
+      const topIds = new Set(top.map(l => l.id));
+
+      // If there are fewer than 3 total, just show what we have
+      showOnlyLocationsById(topIds);
+
+      // Hide distance UI for all first (we’ll re-show for top 3)
+      hideDistanceUI();
+
+      // Clear any prior distance values to avoid stale sorting
+      locations.forEach(l => {
+        l.distanceValueMeters = null;
+        l.distanceText = null;
+        l.durationText = null;
+
+        if (l.distanceTextEl) l.distanceTextEl.textContent = '';
+        if (l.durationTextEl) l.durationTextEl.textContent = '';
+      });
+
+      if (!top.length) {
+        return;
+      }
+
+      // --- 2) Call Distance Matrix ONLY for top 3 ------------------------
+      const destinations = top.map(loc => new google.maps.LatLng(loc.lat, loc.lng));
+
+      const response = await new Promise((resolve, reject) => {
         distanceService.getDistanceMatrix(
           {
             origins: [originLatLng],
@@ -519,57 +604,57 @@ function initETSLocationFinder() {
             travelMode: google.maps.TravelMode.DRIVING,
             unitSystem: google.maps.UnitSystem.IMPERIAL
           },
-          (response, status) => {
-            if (status !== 'OK') {
-              reject(status);
-              return;
-            }
-            resolve({ response, chunkStartIndex: i });
+          (res, status) => {
+            if (status !== 'OK') reject(status);
+            else resolve(res);
           }
         );
       });
 
-      promises.push(p);
-    }
+      const elements = response.rows?.[0]?.elements || [];
 
-    try {
-      const resultsArray = await Promise.all(promises);
+      elements.forEach((el, idx) => {
+        const loc = top[idx];
+        if (!loc) return;
 
-      resultsArray.forEach(({ response, chunkStartIndex }) => {
-        const elements = response.rows[0].elements;
+        if (el.status === 'OK') {
+          const distanceText = el.distance.text;
+          const durationText = el.duration.text;
 
-        elements.forEach((el, idx) => {
-          const loc = locations[chunkStartIndex + idx];
-          if (!loc) return;
+          loc.distanceValueMeters = el.distance.value;
+          loc.distanceText = distanceText;
+          loc.durationText = durationText;
 
-          if (el.status === 'OK') {
-            const distanceText = el.distance.text;
-            const durationText = el.duration.text;
+          if (loc.distanceTextEl) loc.distanceTextEl.textContent = distanceText;
+          if (loc.durationTextEl) loc.durationTextEl.textContent = durationText;
 
-            loc.distanceValueMeters = el.distance.value;
-            loc.distanceText = distanceText;
-            loc.durationText = durationText;
+          showDistanceForLocation(loc);
 
-            if (loc.distanceTextEl) loc.distanceTextEl.textContent = distanceText;
-            if (loc.durationTextEl) loc.durationTextEl.textContent = durationText;
-
-            showDistanceForLocation(loc);
-
-            if (loc.marker && loc.marker.getPopup()) {
-              loc.marker.getPopup().setHTML(buildPopupHTML(loc));
-            }
-          } else {
-            loc.distanceValueMeters = Number.POSITIVE_INFINITY;
-            if (loc.distanceWrapper) loc.distanceWrapper.classList.add('d-none');
-            if (loc.durationWrapper) loc.durationWrapper.classList.add('d-none');
+          if (loc.marker && loc.marker.getPopup()) {
+            loc.marker.getPopup().setHTML(buildPopupHTML(loc));
           }
-        });
+        } else {
+          // If Google can't route to one of the top 3, hide its distance UI
+          loc.distanceValueMeters = Number.POSITIVE_INFINITY;
+          if (loc.distanceWrapper) loc.distanceWrapper.classList.add('d-none');
+          if (loc.durationWrapper) loc.durationWrapper.classList.add('d-none');
+        }
       });
 
+      // --- 3) Sort only the shown locations by driving distance ----------
+      // Keep original sort routine (it sorts `locations[]`), but only 3 are visible anyway.
       sortLocationsByDistance();
 
-      if (map && lastUserLngLat && locations.length && opts.fitMapToUserAndNearest) {
-        const nearest = locations[0];
+      // --- 4) Fit map + auto-select nearest (optional) -------------------
+      if (map && lastUserLngLat && top.length && opts.fitMapToUserAndNearest) {
+        // Find actual nearest among the top after driving distances filled
+        const topSorted = [...top].sort((a, b) => {
+          const da = typeof a.distanceValueMeters === 'number' ? a.distanceValueMeters : Number.POSITIVE_INFINITY;
+          const db = typeof b.distanceValueMeters === 'number' ? b.distanceValueMeters : Number.POSITIVE_INFINITY;
+          return da - db;
+        });
+        const nearest = topSorted[0];
+
         const bounds = new mapboxgl.LngLatBounds();
         bounds.extend([lastUserLngLat.lng, lastUserLngLat.lat]);
         bounds.extend([nearest.lng, nearest.lat]);
@@ -588,13 +673,15 @@ function initETSLocationFinder() {
         }
       }
     } catch (err) {
-      console.error('Distance Matrix error:', err);
+      console.error('Distance calc error:', err);
       hideDistanceUI();
+      // Optionally: if you want to show all again on error:
+      // resetAllLocationVisibility();
     } finally {
-      // ✅ requested: after response + DOM updated -> back to search + opacity 1
       setSearchingUIState(false);
     }
   }
+
 
   function updateUserLocationMarker(lat, lng) {
     lastUserLngLat = { lat, lng };
