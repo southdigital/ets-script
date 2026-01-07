@@ -81,9 +81,14 @@ function initETSLocationFinder() {
   }
 
   function setLocationVisibility(loc, isVisible) {
-    // Hide/show card (Webflow item wrapper preferred)
-    const el = loc.itemWrapper || loc.cardEl;
-    if (el) el.classList.toggle('d-none', !isVisible);
+    // Prefer hiding the CMS wrapper to remove spacing
+    const wrapper = loc.itemWrapper || loc.cardEl;
+
+    if (wrapper) {
+      // Use both class and inline style to guarantee it hides
+      wrapper.classList.toggle('d-none', !isVisible);
+      wrapper.style.display = isVisible ? '' : 'none';
+    }
 
     // Hide/show marker
     if (loc.marker && loc.marker.getElement()) {
@@ -733,16 +738,20 @@ function initETSLocationFinder() {
 
   function handleGeolocationError(error) {
     console.warn('Geolocation error:', error);
-    hideDistanceUI();
 
-    if (error && error.code === error.PERMISSION_DENIED && lastGeolocateWasUserAction) {
-      alert(
-        'We are unable to access your location. To find an ETS Gym near you, please turn on location services or manually enter your location in the search bar.'
-      );
+    // ✅ If user explicitly clicked "use current location" but location is disabled/denied,
+    // do nothing (no hiding, no UI updates, no alerts)
+    if (lastGeolocateWasUserAction) {
+      lastGeolocateWasUserAction = false;
+      setSearchingUIState(false); // in case you had turned it on before calling geolocate
+      return;
     }
 
+    // (Optional) for non-user auto attempt you can keep your existing behavior:
+    hideDistanceUI();
     lastGeolocateWasUserAction = false;
   }
+
 
   function tryGeolocateAndCalculate(fromUserAction) {
     if (!('geolocation' in navigator)) {
