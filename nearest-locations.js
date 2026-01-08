@@ -68,6 +68,16 @@ window.initETSNearest = function () {
       button.disabled = false;
       restoreBtnLabel(button);
       if (resultsBox) resultsBox.style.opacity = "1";
+      if (window.innerWidth <= 767) {
+        const targetSection = document.querySelector('.locations-listing-main-box');
+
+        if (targetSection) {
+          targetSection.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
+      }
     }
   }
 
