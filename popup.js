@@ -5,6 +5,7 @@
   // ============================================================
 
   const ROOT_SELECTOR = ".loc-finder-popup-wrapper";
+  const DETAILS_BTN_SELECTOR = "a.link-location-popup";
 
   // Search UI selectors (inside location finder popup)
   const FORM_SELECTOR = "#find-loc-form-popup";
@@ -220,6 +221,27 @@
           bookBtn.setAttribute("data-booking-form-iframe-id", data?.calendarIframeId || "");
           bookBtn.setAttribute("data-calendar-iframe-id", data?.bookingFormIframeId || "");
           bookBtn.setAttribute("data-calendar-iframe-src", data?.calendarIframeSrc || "");
+        }
+
+
+        const detailsBtn = node.querySelector(DETAILS_BTN_SELECTOR) ||
+            Array.from(node.querySelectorAll("a")).find((a) =>
+              (a.textContent || "").toLowerCase().includes("view details")
+            );
+
+        if (detailsBtn) {
+          // Prefer a fully formed URL from your API
+          const detailsHref =
+            data?.detailsUrl ||
+            data?.detailsHref ||
+            data?.locationDetailsUrl ||
+            "";
+
+          // Fallback if your API returns a slug like "west-columbus"
+          const slug = data?.slug || data?.locationSlug || "";
+          const fallback = slug ? `/locations/${slug}` : "#";
+
+          detailsBtn.href = detailsHref || fallback;
         }
 
         listContainer.appendChild(node);
