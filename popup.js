@@ -388,25 +388,28 @@
       if (step3) step3.classList.toggle("d-none", step !== 3);
     }
 
-    function embedBookingForm(formId) {
-      if (!bookingIframe || !formId) return;
+  function embedBookingForm(formId) {
+    if (!bookingIframe || !formId) return;
 
-      const formSrc =
-        "https://api.leadconnectorhq.com/widget/form/" + encodeURIComponent(formId);
+    const formSrc =
+      "https://api.leadconnectorhq.com/widget/form/" + encodeURIComponent(formId);
 
-      bookingIframe.src = formSrc;
+    bookingIframe.src = formSrc;
 
-      const inlineId = "inline-" + formId;
-      bookingIframe.id = inlineId;
+    // KEEP the original ID (do NOT change it)
+    const iframeId = bookingIframe.id || "bookingFormIframe";
 
-      bookingIframe.setAttribute("data-layout", "{'id':'INLINE'}");
-      bookingIframe.setAttribute("data-trigger-type", "alwaysShow");
-      bookingIframe.setAttribute("data-activation-type", "alwaysActivated");
-      bookingIframe.setAttribute("data-deactivation-type", "neverDeactivate");
-      bookingIframe.setAttribute("data-layout-iframe-id", inlineId);
-      bookingIframe.setAttribute("data-form-id", formId);
-      bookingIframe.setAttribute("title", "Evaluation Form");
-    }
+    bookingIframe.setAttribute("data-layout", "{'id':'INLINE'}");
+    bookingIframe.setAttribute("data-trigger-type", "alwaysShow");
+    bookingIframe.setAttribute("data-activation-type", "alwaysActivated");
+    bookingIframe.setAttribute("data-deactivation-type", "neverDeactivate");
+
+    // If LeadConnector needs this, point to the existing iframe id
+    bookingIframe.setAttribute("data-layout-iframe-id", iframeId);
+
+    bookingIframe.setAttribute("data-form-id", formId);
+    bookingIframe.setAttribute("title", "Evaluation Form");
+  }
 
     function embedCalendar(calSrc, calId) {
       if (!calendarIframe || !calSrc) return;
