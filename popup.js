@@ -492,3 +492,29 @@
     start();
   }
 })();
+
+
+// Go Back BTN Click
+
+document.addEventListener("DOMContentLoaded", function () {
+
+  document.addEventListener("click", function (e) {
+    const backBtn = e.target.closest(".go-backto-loc-listings");
+    if (!backBtn) return;
+
+    e.preventDefault();
+
+    const root = backBtn.closest(".loc-finder-popup-wrapper");
+    if (!root) return;
+
+    const step1 = root.querySelector(".find-your-nearby-gym");
+    const step2 = root.querySelector(".book-eval-popup.location-finder");
+
+    // Show step 1
+    if (step1) step1.classList.remove("d-none");
+
+    // Hide step 2
+    if (step2) step2.classList.add("d-none");
+  });
+
+});
