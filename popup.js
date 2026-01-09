@@ -417,28 +417,46 @@
     // -----------------------------
     // Book button click (scoped)
     // -----------------------------
-    document.addEventListener("click", function (e) {
-      const btn = e.target.closest(BOOK_BTN_SELECTOR);
-      if (!btn) return;
+  document.addEventListener("click", function (e) {
+    const btn = e.target.closest(BOOK_BTN_SELECTOR);
+    if (!btn) return;
 
-      // Must be inside THIS popup root
-      if (!root.contains(btn)) return;
+    const rootNow = document.querySelector(ROOT_SELECTOR);
+    if (!rootNow || !rootNow.contains(btn)) return;
 
-      e.preventDefault();
+    const bookingIframeNow = rootNow.querySelector(BOOKING_IFRAME_SELECTOR);
+    const calendarIframeNow = rootNow.querySelector(CAL_IFRAME_SELECTOR);
+    if (!bookingIframeNow || !calendarIframeNow) return;
 
-      const formId = btn.getAttribute("data-booking-form-iframe-id") || "";
-      const calId  = btn.getAttribute("data-calendar-iframe-id") || "";
-      const calSrc = btn.getAttribute("data-calendar-iframe-src") || "";
+    e.preventDefault();
 
-      // Require at least formId + calSrc to proceed
-      if (!formId || !calSrc) return;
+    const formId = btn.getAttribute("data-booking-form-iframe-id") || "";
+    const calId  = btn.getAttribute("data-calendar-iframe-id") || "";
+    const calSrc = btn.getAttribute("data-calendar-iframe-src") || "";
+    if (!formId || !calSrc) return;
 
-      embedBookingForm(formId);
-      embedCalendar(calSrc, calId);
+    // use the "Now" iframes
+    (function embedBookingFormNow(formId) {
+      const formSrc =
+        "https://api.leadconnectorhq.com/widget/form/" + encodeURIComponent(formId);
 
-      // Move to booking step
-      showStep(2);
-    });
+      bookingIframeNow.src = formSrc;
+      const iframeId = bookingIframeNow.id || "bookingFormIframe";
+      bookingIframeNow.setAttribute("data-layout", "{'id':'INLINE'}");
+      bookingIframeNow.setAttribute("data-trigger-type", "alwaysShow");
+      bookingIframeNow.setAttribute("data-activation-type", "alwaysActivated");
+      bookingIframeNow.setAttribute("data-deactivation-type", "neverDeactivate");
+      bookingIframeNow.setAttribute("data-layout-iframe-id", iframeId);
+      bookingIframeNow.setAttribute("data-form-id", formId);
+      bookingIframeNow.setAttribute("title", "Evaluation Form");
+    })(formId);
+
+    calendarIframeNow.src = calSrc;
+    if (calId) calendarIframeNow.id = calId;
+
+    showStep(2);
+  });
+
 
     // -----------------------------
     // Submission tracking (scoped)
