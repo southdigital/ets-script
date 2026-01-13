@@ -223,6 +223,12 @@
           bookBtn.setAttribute("data-calendar-iframe-src", data?.calendarIframeSrc || "");
         }
 
+        if (!data.calendarIframeId || !data.bookingFormIframeId) {
+          bookBtn.classList.add("d-none");
+        } else {
+          bookBtn.classList.remove("d-none");
+        }
+
 
         const detailsBtn = node.querySelector(DETAILS_BTN_SELECTOR) ||
             Array.from(node.querySelectorAll("a")).find((a) =>
@@ -243,6 +249,7 @@
 
           detailsBtn.href = detailsHref || fallback;
         }
+
 
         listContainer.appendChild(node);
       });
