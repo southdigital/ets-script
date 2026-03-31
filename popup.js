@@ -20,7 +20,7 @@
   const STEP3_SELECTOR = ".loc-finder-popup-wrapper .book-eval-calendar";
 
   // Book buttons inside rendered location cards (inside location finder popup)
-  const BOOK_BTN_SELECTOR = ".locations-ets a.book-eval-loc-popup";
+  const BOOK_BTN_SELECTOR = ".locations-ets .book-eval-loc-popup";
 
   // Iframes inside location finder popup (IMPORTANT: scoped via root)
   const BOOKING_IFRAME_SELECTOR = "#bookingFormIframe";
@@ -211,7 +211,7 @@
         if (driveWrap) driveWrap.classList.remove("d-none");
 
         // Book button + iframe fields
-        const bookBtn = node.querySelector("a.book-eval-loc-popup") ||
+        const bookBtn = node.querySelector(".book-eval-loc-popup") ||
           Array.from(node.querySelectorAll("a")).find((a) =>
             (a.textContent || "").toLowerCase().includes("book")
           );
