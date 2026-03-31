@@ -10,7 +10,7 @@
   // Search UI selectors (inside location finder popup)
   const FORM_SELECTOR = "#find-loc-form-popup";
   const INPUT_SELECTOR = "#user-city-popup";
-  const SEARCH_BTN_SELECTOR = "a.primary-btn";
+  const SEARCH_BTN_SELECTOR = ".primary-btn";
   const USE_CURRENT_SELECTOR = ".use-current-location-popup-btn";
   const LIST_CONTAINER_SELECTOR = ".secondary-locations.locations-popup .w-dyn-items";
 
