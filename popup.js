@@ -464,11 +464,16 @@
       const calId  = btn.getAttribute("data-calendar-iframe-id") || "";
       const calSrc = btn.getAttribute("data-calendar-iframe-src") || "";
 
+      console.log("This is form data");
+      console.log(formId, calId, calSrc);
+
       // Require at least formId + calSrc to proceed
       if (!formId || !calSrc) return;
 
       embedBookingForm(formId);
       embedCalendar(calSrc, calId);
+
+      console.log("Forms embeded");
 
       // Move to booking step
       showStep(2);
