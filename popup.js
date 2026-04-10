@@ -274,6 +274,8 @@
           } else {
             bookBtn.classList.remove("d-none");
           }
+
+          bookBtn.setAttribute("aria-label", "Book Evaluation - " + (data.name || ""));
         }
 
         // --- Details button ---
@@ -297,6 +299,8 @@
           var fallback = slug ? "/locations/" + slug : "#";
 
           detailsBtn.href = detailsHref || fallback;
+
+          detailsBtn.setAttribute("aria-label", "View details of " + (data.name || ""));
         }
 
         listContainer.appendChild(node);
