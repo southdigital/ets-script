@@ -212,8 +212,11 @@
 
         // Book button + iframe fields
         const bookBtn = node.querySelector(".book-eval-loc-popup") ||
-          Array.from(node.querySelectorAll("a")).find((a) =>
-            (a.textContent || "").toLowerCase().includes("book")
+          Array.from(node.querySelectorAll("button")).find((el) =>
+            (el.textContent || "").toLowerCase().includes("book")
+          ) ||
+          Array.from(node.querySelectorAll("a")).find((el) =>
+            (el.textContent || "").toLowerCase().includes("book")
           );
 
         if (bookBtn) {
