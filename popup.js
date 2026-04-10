@@ -23,8 +23,16 @@
   const BOOK_BTN_SELECTOR = ".locations-ets .book-eval-loc-popup";
 
   // Iframes inside location finder popup (IMPORTANT: scoped via root)
-  const BOOKING_IFRAME_SELECTOR = "#bookingFormIframe";
-  const CAL_IFRAME_SELECTOR = "#calendarIframe";
+  let BOOKING_IFRAME_SELECTOR = "#bookingFormIframe";
+  if (!document.querySelector(BOOKING_IFRAME_SELECTOR)) {
+    BOOKING_IFRAME_SELECTOR = "#bookingFormIframe-home";
+  }
+
+  let CAL_IFRAME_SELECTOR = "#calendarIframe";
+  if (!document.querySelector(CAL_IFRAME_SELECTOR)) {
+    CAL_IFRAME_SELECTOR = "#calendarIframe-home";
+  }
+
 
   // API config
   const NETLIFY_URL =
@@ -461,7 +469,7 @@
       console.log("[LOC-FINDER] btn element:", btn);
       console.log("[LOC-FINDER] btn.closest(ROOT_SELECTOR):", btn.closest(ROOT_SELECTOR));
       console.log("[LOC-FINDER] root.contains(btn):", root.contains(btn));
-      
+
       if (!root.contains(btn)) return;
 
       e.preventDefault();
