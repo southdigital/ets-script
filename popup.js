@@ -30,7 +30,7 @@
 
   let CAL_IFRAME_SELECTOR = "#calendarIframe";
   if (!document.querySelector(CAL_IFRAME_SELECTOR)) {
-    CAL_IFRAME_SELECTOR = "#calendarIframe-home";
+    CAL_IFRAME_SELECTOR = "#etscalendarIframe";
   }
 
 
