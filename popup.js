@@ -12,27 +12,16 @@
   const INPUT_SELECTOR = "#user-city-popup";
   const SEARCH_BTN_SELECTOR = ".primary-btn";
   const USE_CURRENT_SELECTOR = ".use-current-location-popup-btn";
-  const LIST_CONTAINER_SELECTOR = ".secondary-locations.locations-popup .w-dyn-items";
+  const LIST_CONTAINER_SELECTOR =
+    ".secondary-locations.locations-popup .w-dyn-items";
 
   // Step toggles (inside location finder popup)
   const STEP1_SELECTOR = ".find-your-nearby-gym";
   const STEP2_SELECTOR = ".book-eval-popup.location-finder";
-  const STEP3_SELECTOR = ".loc-finder-popup-wrapper .book-eval-calendar";
+  const STEP3_SELECTOR = ".book-eval-calendar";
 
-  // Book buttons inside rendered location cards (inside location finder popup)
-  const BOOK_BTN_SELECTOR = ".locations-ets .book-eval-loc-popup";
-
-  // Iframes inside location finder popup (IMPORTANT: scoped via root)
-  let BOOKING_IFRAME_SELECTOR = "#bookingFormIframe";
-  if (!document.querySelector(BOOKING_IFRAME_SELECTOR)) {
-    BOOKING_IFRAME_SELECTOR = "#bookingFormIframe-home";
-  }
-
-  let CAL_IFRAME_SELECTOR = "#calendarIframe";
-  if (!document.querySelector(CAL_IFRAME_SELECTOR)) {
-    CAL_IFRAME_SELECTOR = "#etscalendarIframe";
-  }
-
+  // Book button class (no parent dependency — matched via closest in click handler)
+  const BOOK_BTN_CLASS = ".book-eval-loc-popup";
 
   // API config
   const NETLIFY_URL =
@@ -42,12 +31,12 @@
   // --- waits for Google Places without relying on global callback ---
   function whenGooglePlacesReady(cb, opts) {
     opts = opts || {};
-    const timeoutMs = opts.timeoutMs ?? 20000;
-    const intervalMs = opts.intervalMs ?? 100;
+    var timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 20000;
+    var intervalMs = opts.intervalMs != null ? opts.intervalMs : 100;
 
-    const start = Date.now();
-    const timer = setInterval(() => {
-      const ready = !!(
+    var start = Date.now();
+    var timer = setInterval(function () {
+      var ready = !!(
         window.google &&
         google.maps &&
         google.maps.places &&
@@ -69,27 +58,52 @@
     }, intervalMs);
   }
 
+  // --- Resolve an iframe by trying multiple IDs inside a root element ---
+  function findIframe(root, ids) {
+    for (var i = 0; i < ids.length; i++) {
+      var el = root.querySelector("#" + ids[i]);
+      if (el) return el;
+    }
+    // Fallback: search entire document in case iframe lives outside root
+    for (var j = 0; j < ids.length; j++) {
+      var el2 = document.querySelector("#" + ids[j]);
+      if (el2) return el2;
+    }
+    return null;
+  }
+
   function boot() {
-    const root = document.querySelector(ROOT_SELECTOR);
+    var root = document.querySelector(ROOT_SELECTOR);
     if (!root) return;
 
     // Prevent double init (Webflow can re-run embeds)
     if (root.dataset.locFinderInit === "1") return;
     root.dataset.locFinderInit = "1";
 
-    const form = root.querySelector(FORM_SELECTOR);
-    const input = root.querySelector(INPUT_SELECTOR);
-    const submitBtn = form ? form.querySelector(SEARCH_BTN_SELECTOR) : null;
+    var form = root.querySelector(FORM_SELECTOR);
+    var input = root.querySelector(INPUT_SELECTOR);
+    var submitBtn = form ? form.querySelector(SEARCH_BTN_SELECTOR) : null;
 
-    const useCurrentBtn = root.querySelector(USE_CURRENT_SELECTOR);
-    const listContainer = root.querySelector(LIST_CONTAINER_SELECTOR);
+    var useCurrentBtn = root.querySelector(USE_CURRENT_SELECTOR);
+    var listContainer = root.querySelector(LIST_CONTAINER_SELECTOR);
 
-    const step1 = root.querySelector(STEP1_SELECTOR);
-    const step2 = root.querySelector(STEP2_SELECTOR);
-    const step3 = root.querySelector(STEP3_SELECTOR);
+    var step1 = root.querySelector(STEP1_SELECTOR);
+    var step2 = root.querySelector(STEP2_SELECTOR);
+    var step3 = root.querySelector(STEP3_SELECTOR);
 
-    const bookingIframe = root.querySelector(BOOKING_IFRAME_SELECTOR);
-    const calendarIframe = root.querySelector(CAL_IFRAME_SELECTOR);
+    // Resolve iframes — try all known ID variants
+    var bookingIframe = findIframe(root, [
+      "bookingFormIframe",
+      "bookingFormIframe-home",
+    ]);
+    var calendarIframe = findIframe(root, [
+      "calendarIframe",
+      "calendarIframe-home",
+      "etscalendarIframe",
+    ]);
+
+    console.log("[LOC-FINDER] bookingIframe found:", !!bookingIframe, bookingIframe?.id);
+    console.log("[LOC-FINDER] calendarIframe found:", !!calendarIframe, calendarIframe?.id);
 
     if (!form || !input || !submitBtn || !listContainer) {
       console.error("[LOC-FINDER] Missing required DOM nodes", {
@@ -102,7 +116,7 @@
     }
 
     // Prevent native submit
-    form.addEventListener("submit", (e) => {
+    form.addEventListener("submit", function (e) {
       e.preventDefault();
       e.stopPropagation();
       return false;
@@ -111,8 +125,8 @@
     form.setAttribute("novalidate", "novalidate");
 
     // Loading UI
-    let isLoading = false;
-    const originalBtnText = (submitBtn.textContent || "").trim() || "Search";
+    var isLoading = false;
+    var originalBtnText = (submitBtn.textContent || "").trim() || "Search";
 
     function setLoading(on) {
       isLoading = !!on;
@@ -134,30 +148,36 @@
     }
 
     function locationDeniedAlert() {
-      alert("We can't access your location, please type your zipcode or city.");
+      alert(
+        "We can't access your location, please type your zipcode or city."
+      );
     }
 
     // Template item cloning (keeps Webflow structure)
-    const templateItem =
+    var templateItem =
       listContainer.querySelector(".w-dyn-item") ||
       listContainer.querySelector("[role='listitem']");
 
     if (!templateItem) {
-      console.error("[LOC-FINDER] No template list item found in list container");
+      console.error(
+        "[LOC-FINDER] No template list item found in list container"
+      );
       return;
     }
 
-    // Do NOT call API on autocomplete selection.
-    // Only call API on Search click or Use current location click.
-    let pendingSelection = {
-      source: "text", // "text" | "coords"
+    // Store a deep clone of the template before we ever clear the list
+    var templateClone = templateItem.cloneNode(true);
+
+    // Pending selection state
+    var pendingSelection = {
+      source: "text",
       q: "",
       lat: null,
       lng: null,
     };
 
     // If user types after selecting a place, treat as text again
-    input.addEventListener("input", () => {
+    input.addEventListener("input", function () {
       pendingSelection = {
         source: "text",
         q: input.value,
@@ -166,13 +186,14 @@
       };
     });
 
-    function renderLocations(items = []) {
+    function renderLocations(items) {
+      items = items || [];
       listContainer.innerHTML = "";
 
-      const slice = items.slice(0, LIMIT);
+      var slice = items.slice(0, LIMIT);
 
       if (!slice.length) {
-        const empty = document.createElement("div");
+        var empty = document.createElement("div");
         empty.className = "w-dyn-empty";
         empty.innerHTML =
           '<div class="text-size-regular text-color-inverse">No nearby locations found.</div>';
@@ -180,25 +201,28 @@
         return;
       }
 
-      slice.forEach((data) => {
-        const node = templateItem.cloneNode(true);
+      slice.forEach(function (data) {
+        var node = templateClone.cloneNode(true);
 
         // Title
-        const title = node.querySelector("h3");
-        if (title) title.textContent = data?.name || "";
+        var title = node.querySelector("h3");
+        if (title) title.textContent = data.name || "";
 
         // Address text
-        const addressText = node.querySelector(".directions-link .text-size-regular");
-        if (addressText) addressText.textContent = data?.address || data?.addressText || "";
+        var addressText = node.querySelector(
+          ".directions-link .text-size-regular"
+        );
+        if (addressText)
+          addressText.textContent = data.address || data.addressText || "";
 
         // Directions link
-        const directionsLink = node.querySelector(".directions-link");
+        var directionsLink = node.querySelector(".directions-link");
         if (directionsLink) {
-          if (data?.lat != null && data?.lng != null) {
+          if (data.lat != null && data.lng != null) {
             directionsLink.href =
               "https://www.google.com/maps/dir/?api=1&destination=" +
               encodeURIComponent(data.lat + "," + data.lng);
-          } else if (data?.address) {
+          } else if (data.address) {
             directionsLink.href =
               "https://www.google.com/maps/dir/?api=1&destination=" +
               encodeURIComponent(data.address);
@@ -208,73 +232,88 @@
         }
 
         // Distance + time
-        const distanceWrap = node.querySelector(".estimated-distance-in-miles");
-        const distanceTextEl = node.querySelector(".distance-text");
-        if (distanceTextEl) distanceTextEl.textContent = data?.distanceText || "";
+        var distanceWrap = node.querySelector(".estimated-distance-in-miles");
+        var distanceTextEl = node.querySelector(".distance-text");
+        if (distanceTextEl)
+          distanceTextEl.textContent = data.distanceText || "";
         if (distanceWrap) distanceWrap.classList.remove("d-none");
 
-        const driveWrap = node.querySelector(".estimated-drie-time-wrapper");
-        const driveTextEl = node.querySelector(".estimated-drive-time-text");
-        if (driveTextEl) driveTextEl.textContent = data?.durationText || "";
+        var driveWrap = node.querySelector(".estimated-drie-time-wrapper");
+        var driveTextEl = node.querySelector(".estimated-drive-time-text");
+        if (driveTextEl) driveTextEl.textContent = data.durationText || "";
         if (driveWrap) driveWrap.classList.remove("d-none");
 
-        // Book button + iframe fields
-        const bookBtn = node.querySelector(".book-eval-loc-popup") ||
-          Array.from(node.querySelectorAll("button")).find((el) =>
-            (el.textContent || "").toLowerCase().includes("book")
-          ) ||
-          Array.from(node.querySelectorAll("a")).find((el) =>
-            (el.textContent || "").toLowerCase().includes("book")
-          );
+        // --- Book button ---
+        var bookBtn =
+          node.querySelector(BOOK_BTN_CLASS) ||
+          Array.from(node.querySelectorAll("button")).find(function (el) {
+            return (el.textContent || "").toLowerCase().includes("book");
+          }) ||
+          Array.from(node.querySelectorAll("a")).find(function (el) {
+            return (el.textContent || "").toLowerCase().includes("book");
+          });
 
         if (bookBtn) {
-          bookBtn.href = data?.bookUrl || data?.bookingUrl || "#";
-          bookBtn.setAttribute("data-booking-form-iframe-id", data?.calendarIframeId || "");
-          bookBtn.setAttribute("data-calendar-iframe-id", data?.bookingFormIframeId || "");
-          bookBtn.setAttribute("data-calendar-iframe-src", data?.calendarIframeSrc || "");
+          // Set attributes (intentionally swapped as per your design)
+          bookBtn.setAttribute(
+            "data-booking-form-iframe-id",
+            data.calendarIframeId || ""
+          );
+          bookBtn.setAttribute(
+            "data-calendar-iframe-id",
+            data.bookingFormIframeId || ""
+          );
+          bookBtn.setAttribute(
+            "data-calendar-iframe-src",
+            data.calendarIframeSrc || ""
+          );
+
+          // Show/hide based on data availability
+          if (!data.calendarIframeId || !data.bookingFormIframeId) {
+            bookBtn.classList.add("d-none");
+          } else {
+            bookBtn.classList.remove("d-none");
+          }
         }
 
-        if (!data.calendarIframeId || !data.bookingFormIframeId) {
-          bookBtn.classList.add("d-none");
-        } else {
-          bookBtn.classList.remove("d-none");
-        }
-
-
-        const detailsBtn = node.querySelector(DETAILS_BTN_SELECTOR) ||
-            Array.from(node.querySelectorAll("a")).find((a) =>
-              (a.textContent || "").toLowerCase().includes("view details")
-            );
+        // --- Details button ---
+        var detailsBtn =
+          node.querySelector(DETAILS_BTN_SELECTOR) ||
+          Array.from(node.querySelectorAll("button")).find(function (el) {
+            return (el.textContent || "").toLowerCase().includes("view details");
+          }) ||
+          Array.from(node.querySelectorAll("a")).find(function (el) {
+            return (el.textContent || "").toLowerCase().includes("view details");
+          });
 
         if (detailsBtn) {
-          // Prefer a fully formed URL from your API
-          const detailsHref =
-            data?.detailsUrl ||
-            data?.detailsHref ||
-            data?.locationDetailsUrl ||
+          var detailsHref =
+            data.detailsUrl ||
+            data.detailsHref ||
+            data.locationDetailsUrl ||
             "";
 
-          // Fallback if your API returns a slug like "west-columbus"
-          const slug = data?.slug || data?.locationSlug || "";
-          const fallback = slug ? `/locations/${slug}` : "#";
+          var slug = data.slug || data.locationSlug || "";
+          var fallback = slug ? "/locations/" + slug : "#";
 
           detailsBtn.href = detailsHref || fallback;
         }
-
 
         listContainer.appendChild(node);
       });
     }
 
     async function fetchNearest(payload) {
-      const res = await fetch(NETLIFY_URL, {
+      var res = await fetch(NETLIFY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Request failed");
+      var json = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) throw new Error(json.error || "Request failed");
       return json.items || [];
     }
 
@@ -283,11 +322,12 @@
 
       // Coords search
       if (pendingSelection.source === "coords") {
-        if (pendingSelection.lat == null || pendingSelection.lng == null) return;
+        if (pendingSelection.lat == null || pendingSelection.lng == null)
+          return;
 
         setLoading(true);
         try {
-          const items = await fetchNearest({
+          var items = await fetchNearest({
             lat: pendingSelection.lat,
             lng: pendingSelection.lng,
             limit: LIMIT,
@@ -302,12 +342,12 @@
       }
 
       // Text search
-      const query = (pendingSelection.q || input.value || "").trim();
+      var query = (pendingSelection.q || input.value || "").trim();
       if (!query) return;
 
       setLoading(true);
       try {
-        const items = await fetchNearest({ q: query, limit: LIMIT });
+        var items = await fetchNearest({ q: query, limit: LIMIT });
         renderLocations(items);
       } catch (err) {
         console.error("[LOC-FINDER] text search error", err);
@@ -317,16 +357,17 @@
     }
 
     // Search click
-    submitBtn.addEventListener("click", (e) => {
+    submitBtn.addEventListener("click", function (e) {
       e.preventDefault();
       e.stopPropagation();
 
-      if (pendingSelection.source === "text") pendingSelection.q = input.value;
+      if (pendingSelection.source === "text")
+        pendingSelection.q = input.value;
       runSearchFromPending();
     });
 
-    // Ignore Enter
-    input.addEventListener("keydown", (e) => {
+    // Ignore Enter in input
+    input.addEventListener("keydown", function (e) {
       if (e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
@@ -334,14 +375,14 @@
     });
 
     // Google Places Autocomplete (US only)
-    const autocomplete = new google.maps.places.Autocomplete(input, {
+    var autocomplete = new google.maps.places.Autocomplete(input, {
       types: ["geocode"],
       componentRestrictions: { country: "us" },
     });
 
-    autocomplete.addListener("place_changed", () => {
-      const place = autocomplete.getPlace();
-      const loc = place?.geometry?.location;
+    autocomplete.addListener("place_changed", function () {
+      var place = autocomplete.getPlace();
+      var loc = place && place.geometry ? place.geometry.location : null;
 
       if (loc) {
         pendingSelection = {
@@ -362,147 +403,180 @@
 
     // US-only check for current location
     async function isUSLocation(lat, lng) {
-      if (!google?.maps?.Geocoder) return true;
-      const geocoder = new google.maps.Geocoder();
-      return new Promise((resolve) => {
-        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-          if (status !== "OK" || !results?.[0]) return resolve(false);
-          const country = results[0].address_components?.find((c) =>
-            (c.types || []).includes("country")
-          );
-          resolve((country?.short_name || "").toUpperCase() === "US");
-        });
+      if (!(google && google.maps && google.maps.Geocoder)) return true;
+      var geocoder = new google.maps.Geocoder();
+      return new Promise(function (resolve) {
+        geocoder.geocode(
+          { location: { lat: lat, lng: lng } },
+          function (results, status) {
+            if (status !== "OK" || !results || !results[0])
+              return resolve(false);
+            var country = (results[0].address_components || []).find(
+              function (c) {
+                return (c.types || []).includes("country");
+              }
+            );
+            resolve(
+              ((country && country.short_name) || "").toUpperCase() === "US"
+            );
+          }
+        );
       });
     }
 
-    let currentLocInFlight = false;
+    var currentLocInFlight = false;
 
-    useCurrentBtn?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    if (useCurrentBtn) {
+      useCurrentBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
 
-      if (currentLocInFlight) return;
-      currentLocInFlight = true;
+        if (currentLocInFlight) return;
+        currentLocInFlight = true;
 
-      if (!navigator.geolocation) {
-        currentLocInFlight = false;
-        locationDeniedAlert();
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-
-            const okUS = await isUSLocation(lat, lng);
-            if (!okUS) {
-              alert(
-                "Current location search is available for US locations only. Please enter a US ZIP code or city."
-              );
-              return;
-            }
-
-            pendingSelection = { source: "coords", q: "", lat, lng };
-            await runSearchFromPending();
-          } finally {
-            currentLocInFlight = false;
-          }
-        },
-        () => {
+        if (!navigator.geolocation) {
           currentLocInFlight = false;
           locationDeniedAlert();
-        },
-        { timeout: 15000, maximumAge: 0, enableHighAccuracy: false }
-      );
-    });
+          return;
+        }
 
-    // -----------------------------
-    // Step helpers (scoped)
-    // -----------------------------
+        navigator.geolocation.getCurrentPosition(
+          async function (pos) {
+            try {
+              var lat = pos.coords.latitude;
+              var lng = pos.coords.longitude;
+
+              var okUS = await isUSLocation(lat, lng);
+              if (!okUS) {
+                alert(
+                  "Current location search is available for US locations only. Please enter a US ZIP code or city."
+                );
+                return;
+              }
+
+              pendingSelection = {
+                source: "coords",
+                q: "",
+                lat: lat,
+                lng: lng,
+              };
+              await runSearchFromPending();
+            } finally {
+              currentLocInFlight = false;
+            }
+          },
+          function () {
+            currentLocInFlight = false;
+            locationDeniedAlert();
+          },
+          { timeout: 15000, maximumAge: 0, enableHighAccuracy: false }
+        );
+      });
+    }
+
+    // -----------------------------------------
+    // Step helpers
+    // -----------------------------------------
     function showStep(step) {
-      // Step1 visible by default, step2/3 hidden by d-none in your markup
       if (step1) step1.classList.toggle("d-none", step !== 1);
       if (step2) step2.classList.toggle("d-none", step !== 2);
       if (step3) step3.classList.toggle("d-none", step !== 3);
     }
 
     function embedBookingForm(formId) {
-      if (!bookingIframe || !formId) return;
+      if (!bookingIframe || !formId) {
+        console.warn("[LOC-FINDER] embedBookingForm skipped — missing iframe or formId", {
+          iframe: !!bookingIframe,
+          formId: formId,
+        });
+        return;
+      }
 
-      const formSrc =
-        "https://api.leadconnectorhq.com/widget/form/" + encodeURIComponent(formId);
+      var formSrc =
+        "https://api.leadconnectorhq.com/widget/form/" +
+        encodeURIComponent(formId);
+
+      console.log("[LOC-FINDER] Setting bookingIframe.src:", formSrc);
 
       bookingIframe.src = formSrc;
 
-      const inlineId = "inline-" + formId;
+      var inlineId = "inline-" + formId;
       bookingIframe.id = inlineId;
 
       bookingIframe.setAttribute("data-layout", "{'id':'INLINE'}");
       bookingIframe.setAttribute("data-trigger-type", "alwaysShow");
       bookingIframe.setAttribute("data-activation-type", "alwaysActivated");
-      bookingIframe.setAttribute("data-deactivation-type", "neverDeactivate");
+      bookingIframe.setAttribute(
+        "data-deactivation-type",
+        "neverDeactivate"
+      );
       bookingIframe.setAttribute("data-layout-iframe-id", inlineId);
       bookingIframe.setAttribute("data-form-id", formId);
       bookingIframe.setAttribute("title", "Evaluation Form");
     }
 
     function embedCalendar(calSrc, calId) {
-      if (!calendarIframe || !calSrc) return;
+      if (!calendarIframe || !calSrc) {
+        console.warn("[LOC-FINDER] embedCalendar skipped — missing iframe or calSrc", {
+          iframe: !!calendarIframe,
+          calSrc: calSrc,
+        });
+        return;
+      }
+
+      console.log("[LOC-FINDER] Setting calendarIframe.src:", calSrc);
+
       calendarIframe.src = calSrc;
       if (calId) calendarIframe.id = calId;
     }
 
-    // -----------------------------
-    // Book button click (scoped)
-    // -----------------------------
+    // -----------------------------------------
+    // Book button click (delegated, scoped)
+    // -----------------------------------------
     document.addEventListener("click", function (e) {
-      console.log("Book Eval Clicked");
-      const btn = e.target.closest(BOOK_BTN_SELECTOR);
+      // Find the book button — match by class directly, no parent dependency
+      var btn = e.target.closest(BOOK_BTN_CLASS);
       if (!btn) return;
 
-      console.log("Book eval clicked is right");
-      // Must be inside THIS popup root
-
-      console.log("[LOC-FINDER] root element:", root);
-      console.log("[LOC-FINDER] btn element:", btn);
-      console.log("[LOC-FINDER] btn.closest(ROOT_SELECTOR):", btn.closest(ROOT_SELECTOR));
-      console.log("[LOC-FINDER] root.contains(btn):", root.contains(btn));
-
-      if (!root.contains(btn)) return;
+      // Must be inside a popup wrapper (not necessarily the exact `root` ref)
+      var btnRoot = btn.closest(ROOT_SELECTOR);
+      if (!btnRoot) return;
 
       e.preventDefault();
 
-      const formId = btn.getAttribute("data-booking-form-iframe-id") || "";
-      const calId  = btn.getAttribute("data-calendar-iframe-id") || "";
-      const calSrc = btn.getAttribute("data-calendar-iframe-src") || "";
+      var formId = btn.getAttribute("data-booking-form-iframe-id") || "";
+      var calId = btn.getAttribute("data-calendar-iframe-id") || "";
+      var calSrc = btn.getAttribute("data-calendar-iframe-src") || "";
 
-      console.log("This is form data");
-      console.log(formId, calId, calSrc);
+      console.log("[LOC-FINDER] Book btn clicked:", { formId: formId, calId: calId, calSrc: calSrc });
 
       // Require at least formId + calSrc to proceed
-      if (!formId || !calSrc) return;
+      if (!formId || !calSrc) {
+        console.warn("[LOC-FINDER] Missing formId or calSrc — cannot embed", {
+          formId: formId,
+          calSrc: calSrc,
+        });
+        return;
+      }
 
       embedBookingForm(formId);
       embedCalendar(calSrc, calId);
-
-      console.log("Forms embeded");
 
       // Move to booking step
       showStep(2);
     });
 
-    // -----------------------------
-    // Submission tracking (scoped)
-    // -----------------------------
-    let fired = false;
+    // -----------------------------------------
+    // Submission tracking (LeadConnector)
+    // -----------------------------------------
+    var fired = false;
 
     window.addEventListener("message", function (event) {
-      const data = event.data;
+      var data = event.data;
 
       // Ignore iframe resizer chatter
-      if (typeof data === "string" && data.startsWith("[iFrameSizer]")) return;
+      if (typeof data === "string" && data.startsWith("[iFrameSizer]"))
+        return;
 
       // LeadConnector submission event
       if (Array.isArray(data) && data[0] === "set-sticky-contacts") {
@@ -512,9 +586,9 @@
         if (!bookingIframe || !bookingIframe.src) return;
 
         fired = true;
-        console.log("[LOC-FINDER] ✅ form submitted (scoped)");
+        console.log("[LOC-FINDER] form submitted");
 
-        const popup = document.querySelector(".loc-finder-popup-wrapper");
+        var popup = document.querySelector(ROOT_SELECTOR);
         if (!popup) return;
         if (window.getComputedStyle(popup).display === "none") return;
 
@@ -523,12 +597,13 @@
     });
 
     // If user returns to step 1, allow submission again later
-    // (Optional but helps if popup is re-used without reload)
-    const obs = new MutationObserver(() => {
-      const step1Visible = step1 && !step1.classList.contains("d-none");
-      if (step1Visible) fired = false;
-    });
-    if (step1) obs.observe(step1, { attributes: true, attributeFilter: ["class"] });
+    if (step1) {
+      var obs = new MutationObserver(function () {
+        var step1Visible = !step1.classList.contains("d-none");
+        if (step1Visible) fired = false;
+      });
+      obs.observe(step1, { attributes: true, attributeFilter: ["class"] });
+    }
 
     console.log("[LOC-FINDER] ready");
   }
@@ -544,28 +619,23 @@
   }
 })();
 
-
-// Go Back BTN Click
-
+// -----------------------------------------
+// Go Back Button Click (outside IIFE, global)
+// -----------------------------------------
 document.addEventListener("DOMContentLoaded", function () {
-
   document.addEventListener("click", function (e) {
-    const backBtn = e.target.closest(".go-backto-loc-listings");
+    var backBtn = e.target.closest(".go-backto-loc-listings");
     if (!backBtn) return;
 
     e.preventDefault();
 
-    const root = backBtn.closest(".loc-finder-popup-wrapper");
+    var root = backBtn.closest(".loc-finder-popup-wrapper");
     if (!root) return;
 
-    const step1 = root.querySelector(".find-your-nearby-gym");
-    const step2 = root.querySelector(".book-eval-popup.location-finder");
+    var step1 = root.querySelector(".find-your-nearby-gym");
+    var step2 = root.querySelector(".book-eval-popup.location-finder");
 
-    // Show step 1
     if (step1) step1.classList.remove("d-none");
-
-    // Hide step 2
     if (step2) step2.classList.add("d-none");
   });
-
 });
