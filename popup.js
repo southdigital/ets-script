@@ -456,6 +456,12 @@
 
       console.log("Book eval clicked is right");
       // Must be inside THIS popup root
+
+      console.log("[LOC-FINDER] root element:", root);
+      console.log("[LOC-FINDER] btn element:", btn);
+      console.log("[LOC-FINDER] btn.closest(ROOT_SELECTOR):", btn.closest(ROOT_SELECTOR));
+      console.log("[LOC-FINDER] root.contains(btn):", root.contains(btn));
+      
       if (!root.contains(btn)) return;
 
       e.preventDefault();
