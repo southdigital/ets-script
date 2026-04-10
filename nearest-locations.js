@@ -106,8 +106,14 @@ window.initETSNearest = function () {
     const btns = Array.prototype.slice.call(card.querySelectorAll(".button"));
     btns.forEach(function(a){
       const label = (a.textContent || "").toLowerCase();
-      if (label.indexOf("book")   > -1) a.href = data.bookUrl || "#";
-      if (label.indexOf("detail") > -1) a.href = data.detailsUrl || "#";
+      if (label.indexOf("book") > -1) {
+        a.href = data.bookUrl || "#";
+        a.setAttribute("aria-label", "Book Evaluation - " + (data.name || ""));
+      }
+      if (label.indexOf("detail") > -1) {
+        a.href = data.detailsUrl || "#";
+        a.setAttribute("aria-label", "View details of " + (data.name || ""));
+      }
     });
   }
 
@@ -120,7 +126,11 @@ window.initETSNearest = function () {
       if (data.durationText){ etaWrap.classList.remove("d-none"); const t2=etaWrap.querySelector(".text-size-regular"); if (t2) t2.textContent = data.durationText; }
       else { etaWrap.classList.add("d-none"); }
     }
-    const detailsBtn = card.querySelector(".button"); if (detailsBtn) detailsBtn.href = data.detailsUrl || "#";
+    const detailsBtn = card.querySelector(".button");
+    if (detailsBtn) {
+      detailsBtn.href = data.detailsUrl || "#";
+      detailsBtn.setAttribute("aria-label", "View details of " + (data.name || ""));
+    }
   }
 
   // ---------- Click handler (click-only; disable immediately) ----------
@@ -320,12 +330,21 @@ window.initETSNearest = function () {
       const btns = card.querySelectorAll(".button, .button-7");
       btns.forEach(a => {
         const label = (a.textContent || "").toLowerCase();
-        if (label.includes("book")) a.href = data.bookUrl || "#";
-        if (label.includes("detail")) a.href = data.detailsUrl || "#";
+        if (label.includes("book")) {
+          a.href = data.bookUrl || "#";
+          a.setAttribute("aria-label", "Book Evaluation - " + (data.name || ""));
+        }
+        if (label.includes("detail")) {
+          a.href = data.detailsUrl || "#";
+          a.setAttribute("aria-label", "View details of " + (data.name || ""));
+        }
       });
     } else {
       const detailsBtn = card.querySelector(".button, .button-7");
-      if (detailsBtn) detailsBtn.href = data.detailsUrl || "#";
+      if (detailsBtn) {
+        detailsBtn.href = data.detailsUrl || "#";
+        detailsBtn.setAttribute("aria-label", "View details of " + (data.name || ""));
+      }
     }
   }
 })();
