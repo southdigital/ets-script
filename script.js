@@ -37,6 +37,70 @@ function initETSLocationFinder() {
     setTimeout(() => { liveRegion.textContent = message; }, 50);
   }
 
+  // A11Y: Viewport-aware tab order for markers.
+  // Problem: with 50+ markers, all are in the DOM at once but only some are
+  // visually in view. Mapbox positions them via transform, so DOM order is
+  // random relative to visual order. Result: Tab jumps to off-screen pins
+  // in unpredictable sequence.
+  //
+  // Fix: on every map move/zoom, only the markers whose screen position is
+  // inside the map viewport get tabindex="0". The rest get tabindex="-1".
+  // Tabbable markers are also sorted by screen position (top-to-bottom,
+  // left-to-right) to match reading order.
+  let updateTabOrderRAF = null;
+  function updateMarkerTabOrder() {
+    if (!map) return;
+
+    // Debounce via rAF so rapid pan/zoom doesn't thrash the DOM.
+    if (updateTabOrderRAF) cancelAnimationFrame(updateTabOrderRAF);
+    updateTabOrderRAF = requestAnimationFrame(() => {
+      updateTabOrderRAF = null;
+
+      const canvas = map.getCanvas();
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+
+      // Collect markers that (a) exist, (b) aren't hidden by filter, and
+      // (c) project to a point inside the visible canvas.
+      const inView = [];
+      locations.forEach(loc => {
+        if (!loc.marker) return;
+        const el = loc.marker.getElement();
+        if (!el) return;
+
+        // If the marker is hidden by our filter logic, force it out of tab order.
+        if (el.style.display === 'none' || el.getAttribute('aria-hidden') === 'true') {
+          el.setAttribute('tabindex', '-1');
+          return;
+        }
+
+        const point = map.project(loc.marker.getLngLat());
+        const inside = point.x >= 0 && point.x <= w && point.y >= 0 && point.y <= h;
+
+        if (inside) {
+          inView.push({ el, x: point.x, y: point.y });
+        } else {
+          el.setAttribute('tabindex', '-1');
+        }
+      });
+
+      // Sort by y first (top to bottom), then x (left to right) — reading order.
+      // Bucket y into rows of ~40px so pins on roughly the same line stay
+      // left-to-right instead of being split by sub-pixel differences.
+      const ROW_BUCKET = 40;
+      inView.sort((a, b) => {
+        const ra = Math.floor(a.y / ROW_BUCKET);
+        const rb = Math.floor(b.y / ROW_BUCKET);
+        if (ra !== rb) return ra - rb;
+        return a.x - b.x;
+      });
+
+      inView.forEach(({ el }) => {
+        el.setAttribute('tabindex', '0');
+      });
+    });
+  }
+
   // A11Y: Set role + label on the map container. This is requirement #1.
   const mapContainerEl = document.getElementById('heatmap');
   if (mapContainerEl) {
@@ -196,10 +260,11 @@ function initETSLocationFinder() {
     if (loc.marker && loc.marker.getElement()) {
       const el = loc.marker.getElement();
       el.style.display = isVisible ? '' : 'none';
-      // A11Y: Remove from tab order when hidden.
+      // A11Y: aria-hidden follows visibility. Tab order itself is decided
+      // by updateMarkerTabOrder() — which also respects viewport — so we
+      // just trigger it and it does the right thing.
       if (isVisible) {
         el.removeAttribute('aria-hidden');
-        el.setAttribute('tabindex', '0');
       } else {
         el.setAttribute('aria-hidden', 'true');
         el.setAttribute('tabindex', '-1');
@@ -211,10 +276,12 @@ function initETSLocationFinder() {
     locations.forEach(loc => {
       setLocationVisibility(loc, allowedIdsSet.has(loc.id));
     });
+    updateMarkerTabOrder();
   }
 
   function resetAllLocationVisibility() {
     locations.forEach(loc => setLocationVisibility(loc, true));
+    updateMarkerTabOrder();
   }
 
   // --- Distance UI helpers ---------------------------------------
@@ -355,6 +422,97 @@ function initETSLocationFinder() {
     `;
   }
 
+  // A11Y: Soft focus trap for the open popup.
+  // Why "soft": the popup is informational, not modal — the map behind stays
+  // usable. We don't want a hard trap (like a dialog that blocks everything).
+  // We just want Tab/Shift+Tab to cycle within the popup while it's open so
+  // keyboard users don't get flung to a random marker. Escape closes and
+  // returns focus to the marker that opened it.
+  let popupTrapHandler = null;
+  let popupTrapElement = null;
+
+  function getFocusableInPopup(popupEl) {
+    if (!popupEl) return [];
+    const selector = [
+      'a[href]',
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'textarea:not([disabled])',
+      'select:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(',');
+    return Array.from(popupEl.querySelectorAll(selector)).filter(el => {
+      // Skip elements that are hidden.
+      return el.offsetParent !== null || el === document.activeElement;
+    });
+  }
+
+  function attachPopupFocusTrap(popup, returnFocusEl) {
+    const popupEl = popup.getElement();
+    if (!popupEl) return;
+    popupTrapElement = popupEl;
+
+    // Move focus into the popup on next tick — Mapbox needs a moment to
+    // finish positioning, and focusing too early can snap the page scroll.
+    requestAnimationFrame(() => {
+      const focusables = getFocusableInPopup(popupEl);
+      if (focusables.length > 0) {
+        focusables[0].focus();
+      } else {
+        // No focusables inside (rare) — make the popup itself focusable so
+        // AT users still land somewhere sensible.
+        popupEl.setAttribute('tabindex', '-1');
+        popupEl.focus();
+      }
+    });
+
+    popupTrapHandler = function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (popup.isOpen()) popup.remove();
+        if (returnFocusEl && typeof returnFocusEl.focus === 'function') {
+          returnFocusEl.focus();
+        }
+        return;
+      }
+
+      if (e.key !== 'Tab') return;
+
+      const focusables = getFocusableInPopup(popupEl);
+      if (focusables.length === 0) {
+        // Nothing to tab to — keep focus where it is.
+        e.preventDefault();
+        return;
+      }
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+
+      // Only trap if focus is actually inside the popup. If the user somehow
+      // clicked outside, let normal tabbing resume.
+      if (!popupEl.contains(active)) return;
+
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', popupTrapHandler, true);
+  }
+
+  function detachPopupFocusTrap() {
+    if (popupTrapHandler) {
+      document.removeEventListener('keydown', popupTrapHandler, true);
+      popupTrapHandler = null;
+    }
+    popupTrapElement = null;
+  }
+
   function clearActiveLocation() {
     if (activeLocationId === null) return;
     const prev = locations.find(l => l.id === activeLocationId);
@@ -372,6 +530,8 @@ function initETSLocationFinder() {
     activeLocationId = null;
     if (activePopup && activePopup.isOpen()) activePopup.remove();
     activePopup = null;
+    // A11Y: Clean up the focus trap whenever the active location is cleared.
+    detachPopupFocusTrap();
   }
 
   function selectLocation(locationId, options) {
@@ -442,9 +602,17 @@ function initETSLocationFinder() {
     }
 
     if (opts.openPopup && loc.marker && loc.marker.getPopup()) {
-      if (activePopup && activePopup.isOpen()) activePopup.remove();
+      if (activePopup && activePopup.isOpen()) {
+        // Detach trap for previous popup before swapping to the new one.
+        detachPopupFocusTrap();
+        activePopup.remove();
+      }
       activePopup = loc.marker.getPopup();
       activePopup.addTo(map);
+
+      // A11Y: Attach soft focus trap. Focus returns to the marker on close.
+      const markerEl = loc.marker.getElement();
+      attachPopupFocusTrap(activePopup, markerEl);
 
       // A11Y: Announce selection to AT users.
       const parts = [`${loc.name || 'Location'} selected.`];
@@ -476,6 +644,9 @@ function initETSLocationFinder() {
       );
       markerEl.setAttribute('aria-expanded', 'false');
       markerEl.setAttribute('aria-haspopup', 'dialog');
+      // A11Y: Start out of tab order. updateMarkerTabOrder() promotes only
+      // the markers currently inside the viewport to tabindex="0".
+      markerEl.setAttribute('tabindex', '-1');
       // Reset default button styling so it still visually matches the original pin.
       markerEl.style.background = 'transparent';
       markerEl.style.border = '0';
@@ -906,6 +1077,8 @@ function initETSLocationFinder() {
 
     map.on('load', () => {
       createMarkersAndWireCards();
+      // A11Y: Establish initial tab order once markers exist.
+      updateMarkerTabOrder();
 
       if (typeof animateToZoom === 'number') {
         map.easeTo({
@@ -917,6 +1090,13 @@ function initETSLocationFinder() {
         });
       }
     });
+
+    // A11Y: Recalculate tab order whenever the viewport changes. We listen to
+    // moveend/zoomend (fires once after pan/zoom settles) rather than move/zoom
+    // (fires continuously) — less thrashing, and tab order only matters when
+    // the user has stopped interacting.
+    map.on('moveend', updateMarkerTabOrder);
+    map.on('zoomend', updateMarkerTabOrder);
   }
 
   // --- Bootstrapping ---------------------------------------
