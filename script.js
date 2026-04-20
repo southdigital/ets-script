@@ -115,61 +115,6 @@ function initETSLocationFinder() {
 
   // A11Y: Inject a "Skip map" link (requirement #4). Placed immediately before
   // the map container. Visually hidden until focused — standard skip-link pattern.
-  if (mapContainerEl && !document.getElementById('ets-skip-map')) {
-    // Ensure the list container has an id we can target.
-    if (!locationsContainer.id) {
-      locationsContainer.id = 'ets-locations-list';
-    }
-
-    const skipLink = document.createElement('a');
-    skipLink.id = 'ets-skip-map';
-    skipLink.href = '#' + locationsContainer.id;
-    skipLink.textContent = 'Skip map and jump to location list';
-    skipLink.style.cssText = [
-      'position:absolute',
-      'left:-9999px',
-      'top:auto',
-      'width:1px',
-      'height:1px',
-      'overflow:hidden',
-      'z-index:9999',
-      'background:#000',
-      'color:#fff',
-      'padding:10px 16px',
-      'border-radius:4px',
-      'text-decoration:none',
-      'font-weight:600'
-    ].join(';');
-    skipLink.addEventListener('focus', () => {
-      skipLink.style.left = '16px';
-      skipLink.style.top = '16px';
-      skipLink.style.width = 'auto';
-      skipLink.style.height = 'auto';
-    });
-    skipLink.addEventListener('blur', () => {
-      skipLink.style.left = '-9999px';
-      skipLink.style.top = 'auto';
-      skipLink.style.width = '1px';
-      skipLink.style.height = '1px';
-    });
-    // A11Y: When activated, move focus into the list's first card for keyboard users.
-    skipLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      const firstVisibleCard = locationsContainer.querySelector(
-        '.location-item:not([style*="display: none"])'
-      );
-      if (firstVisibleCard) {
-        if (!firstVisibleCard.hasAttribute('tabindex')) {
-          firstVisibleCard.setAttribute('tabindex', '-1');
-        }
-        firstVisibleCard.focus();
-        firstVisibleCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        locationsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    });
-    mapContainerEl.parentNode.insertBefore(skipLink, mapContainerEl);
-  }
 
   // A11Y: Label the list region so screen reader users understand its purpose.
   locationsContainer.setAttribute('role', 'region');
