@@ -23,7 +23,7 @@
   // Book button class (no parent dependency — matched via closest in click handler)
   const BOOK_BTN_CLASS = ".book-eval-loc-popup";
 
-  // Focusable selector for picking a fallback focus target
+  // Focusable selector used to pick a fallback focus target
   const FOCUSABLE =
     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
@@ -68,7 +68,6 @@
       var el = root.querySelector("#" + ids[i]);
       if (el) return el;
     }
-    // Fallback: search entire document in case iframe lives outside root
     for (var j = 0; j < ids.length; j++) {
       var el2 = document.querySelector("#" + ids[j]);
       if (el2) return el2;
@@ -77,25 +76,21 @@
   }
 
   // ============================================================
-  // A11Y: Focus management for steps
+  // A11Y: Focus management helpers
   // ============================================================
 
-  // Find the heading for a given step (by aria-labelledby id, or first heading)
   function findStepHeading(stepEl) {
     if (!stepEl) return null;
 
-    // Prefer the element referenced by aria-labelledby
     var labelId = stepEl.getAttribute("aria-labelledby");
     if (labelId) {
       var labelled = document.getElementById(labelId);
       if (labelled) return labelled;
     }
 
-    // Fallback: first heading inside the step
     return stepEl.querySelector("h1, h2, h3, h4, h5, h6");
   }
 
-  // Get focusable elements inside a step (skip hidden)
   function getFocusable(container) {
     if (!container) return [];
     return Array.from(container.querySelectorAll(FOCUSABLE)).filter(function (el) {
@@ -115,16 +110,13 @@
       var heading = findStepHeading(stepEl);
 
       if (heading) {
-        // Ensure heading can receive programmatic focus
         if (!heading.hasAttribute("tabindex")) {
           heading.setAttribute("tabindex", "-1");
         }
         try {
           heading.focus({ preventScroll: false });
           return;
-        } catch (e) {
-          // fall through to focusable fallback
-        }
+        } catch (e) {}
       }
 
       var focusable = getFocusable(stepEl);
@@ -133,15 +125,12 @@
         return;
       }
 
-      // Last resort — focus the step container itself
       if (!stepEl.hasAttribute("tabindex")) {
         stepEl.setAttribute("tabindex", "-1");
       }
       try {
         stepEl.focus();
-      } catch (e) {
-        // nothing more we can do
-      }
+      } catch (e) {}
     });
   }
 
@@ -149,7 +138,6 @@
     var root = document.querySelector(ROOT_SELECTOR);
     if (!root) return;
 
-    // Prevent double init (Webflow can re-run embeds)
     if (root.dataset.locFinderInit === "1") return;
     root.dataset.locFinderInit = "1";
 
@@ -164,7 +152,6 @@
     var step2 = root.querySelector(STEP2_SELECTOR);
     var step3 = root.querySelector(STEP3_SELECTOR);
 
-    // Resolve iframes — try all known ID variants
     var bookingIframe = findIframe(root, [
       "bookingFormIframe",
       "bookingFormIframe-home",
@@ -197,7 +184,6 @@
     form.setAttribute("action", "javascript:void(0)");
     form.setAttribute("novalidate", "novalidate");
 
-    // Loading UI
     var isLoading = false;
     var originalBtnText = (submitBtn.textContent || "").trim() || "Search";
 
@@ -221,27 +207,20 @@
     }
 
     function locationDeniedAlert() {
-      alert(
-        "We can't access your location, please type your zipcode or city."
-      );
+      alert("We can't access your location, please type your zipcode or city.");
     }
 
-    // Template item cloning (keeps Webflow structure)
     var templateItem =
       listContainer.querySelector(".w-dyn-item") ||
       listContainer.querySelector("[role='listitem']");
 
     if (!templateItem) {
-      console.error(
-        "[LOC-FINDER] No template list item found in list container"
-      );
+      console.error("[LOC-FINDER] No template list item found in list container");
       return;
     }
 
-    // Store a deep clone of the template before we ever clear the list
     var templateClone = templateItem.cloneNode(true);
 
-    // Pending selection state
     var pendingSelection = {
       source: "text",
       q: "",
@@ -249,7 +228,6 @@
       lng: null,
     };
 
-    // If user types after selecting a place, treat as text again
     input.addEventListener("input", function () {
       pendingSelection = {
         source: "text",
@@ -277,18 +255,15 @@
       slice.forEach(function (data) {
         var node = templateClone.cloneNode(true);
 
-        // Title
         var title = node.querySelector("h3");
         if (title) title.textContent = data.name || "";
 
-        // Address text
         var addressText = node.querySelector(
           ".directions-link .text-size-regular"
         );
         if (addressText)
           addressText.textContent = data.address || data.addressText || "";
 
-        // Directions link
         var directionsLink = node.querySelector(".directions-link");
         if (directionsLink) {
           if (data.lat != null && data.lng != null) {
@@ -304,7 +279,6 @@
           }
         }
 
-        // Distance + time
         var distanceWrap = node.querySelector(".estimated-distance-in-miles");
         var distanceTextEl = node.querySelector(".distance-text");
         if (distanceTextEl)
@@ -316,7 +290,6 @@
         if (driveTextEl) driveTextEl.textContent = data.durationText || "";
         if (driveWrap) driveWrap.classList.remove("d-none");
 
-        // --- Book button ---
         var bookBtn =
           node.querySelector(BOOK_BTN_CLASS) ||
           Array.from(node.querySelectorAll("button")).find(function (el) {
@@ -327,7 +300,6 @@
           });
 
         if (bookBtn) {
-          // Set attributes (intentionally swapped as per your design)
           bookBtn.setAttribute(
             "data-booking-form-iframe-id",
             data.calendarIframeId || ""
@@ -341,7 +313,6 @@
             data.calendarIframeSrc || ""
           );
 
-          // Show/hide based on data availability
           if (!data.calendarIframeId || !data.bookingFormIframeId) {
             bookBtn.classList.add("d-none");
           } else {
@@ -351,7 +322,6 @@
           bookBtn.setAttribute("aria-label", "Book Evaluation - " + (data.name || ""));
         }
 
-        // --- Details button ---
         var detailsBtn =
           node.querySelector(DETAILS_BTN_SELECTOR) ||
           Array.from(node.querySelectorAll("button")).find(function (el) {
@@ -363,16 +333,11 @@
 
         if (detailsBtn) {
           var detailsHref =
-            data.detailsUrl ||
-            data.detailsHref ||
-            data.locationDetailsUrl ||
-            "";
-
+            data.detailsUrl || data.detailsHref || data.locationDetailsUrl || "";
           var slug = data.slug || data.locationSlug || "";
           var fallback = slug ? "/locations/" + slug : "#";
 
           detailsBtn.href = detailsHref || fallback;
-
           detailsBtn.setAttribute("aria-label", "View details of " + (data.name || ""));
         }
 
@@ -397,10 +362,8 @@
     async function runSearchFromPending() {
       if (isLoading) return;
 
-      // Coords search
       if (pendingSelection.source === "coords") {
-        if (pendingSelection.lat == null || pendingSelection.lng == null)
-          return;
+        if (pendingSelection.lat == null || pendingSelection.lng == null) return;
 
         setLoading(true);
         try {
@@ -418,7 +381,6 @@
         return;
       }
 
-      // Text search
       var query = (pendingSelection.q || input.value || "").trim();
       if (!query) return;
 
@@ -433,7 +395,6 @@
       }
     }
 
-    // Search click
     submitBtn.addEventListener("click", function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -443,7 +404,6 @@
       runSearchFromPending();
     });
 
-    // Ignore Enter in input
     input.addEventListener("keydown", function (e) {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -451,7 +411,6 @@
       }
     });
 
-    // Google Places Autocomplete (US only)
     var autocomplete = new google.maps.places.Autocomplete(input, {
       types: ["geocode"],
       componentRestrictions: { country: "us" },
@@ -478,7 +437,6 @@
       }
     });
 
-    // US-only check for current location
     async function isUSLocation(lat, lng) {
       if (!(google && google.maps && google.maps.Geocoder)) return true;
       var geocoder = new google.maps.Geocoder();
@@ -486,16 +444,11 @@
         geocoder.geocode(
           { location: { lat: lat, lng: lng } },
           function (results, status) {
-            if (status !== "OK" || !results || !results[0])
-              return resolve(false);
-            var country = (results[0].address_components || []).find(
-              function (c) {
-                return (c.types || []).includes("country");
-              }
-            );
-            resolve(
-              ((country && country.short_name) || "").toUpperCase() === "US"
-            );
+            if (status !== "OK" || !results || !results[0]) return resolve(false);
+            var country = (results[0].address_components || []).find(function (c) {
+              return (c.types || []).includes("country");
+            });
+            resolve(((country && country.short_name) || "").toUpperCase() === "US");
           }
         );
       });
@@ -566,8 +519,8 @@
     // -----------------------------------------
     // Step helpers
     // A11Y: After toggling visibility, move focus into the newly visible step
-    // so screen reader users are announced to the new context and keyboard
-    // users continue their flow there.
+    // so screen reader users hear the new context and keyboard users continue
+    // their flow there.
     // -----------------------------------------
     function showStep(step) {
       if (step1) step1.classList.toggle("d-none", step !== 1);
@@ -601,10 +554,7 @@
       bookingIframe.setAttribute("data-layout", "{'id':'INLINE'}");
       bookingIframe.setAttribute("data-trigger-type", "alwaysShow");
       bookingIframe.setAttribute("data-activation-type", "alwaysActivated");
-      bookingIframe.setAttribute(
-        "data-deactivation-type",
-        "neverDeactivate"
-      );
+      bookingIframe.setAttribute("data-deactivation-type", "neverDeactivate");
       bookingIframe.setAttribute("data-layout-iframe-id", inlineId);
       bookingIframe.setAttribute("data-form-id", formId);
       bookingIframe.setAttribute("title", "Evaluation Form");
@@ -625,15 +575,11 @@
       if (calId) calendarIframe.id = calId;
     }
 
-    // -----------------------------------------
     // Book button click (delegated, scoped)
-    // -----------------------------------------
     document.addEventListener("click", function (e) {
-      // Find the book button — match by class directly, no parent dependency
       var btn = e.target.closest(BOOK_BTN_CLASS);
       if (!btn) return;
 
-      // Must be inside a popup wrapper (not necessarily the exact `root` ref)
       var btnRoot = btn.closest(ROOT_SELECTOR);
       if (!btnRoot) return;
 
@@ -645,7 +591,6 @@
 
       console.log("[LOC-FINDER] Book btn clicked:", { formId: formId, calId: calId, calSrc: calSrc });
 
-      // Require at least formId + calSrc to proceed
       if (!formId || !calSrc) {
         console.warn("[LOC-FINDER] Missing formId or calSrc — cannot embed", {
           formId: formId,
@@ -657,27 +602,19 @@
       embedBookingForm(formId);
       embedCalendar(calSrc, calId);
 
-      // Move to booking step (focus handled by showStep)
       showStep(2);
     });
 
-    // -----------------------------------------
     // Submission tracking (LeadConnector)
-    // -----------------------------------------
     var fired = false;
 
     window.addEventListener("message", function (event) {
       var data = event.data;
 
-      // Ignore iframe resizer chatter
-      if (typeof data === "string" && data.startsWith("[iFrameSizer]"))
-        return;
+      if (typeof data === "string" && data.startsWith("[iFrameSizer]")) return;
 
-      // LeadConnector submission event
       if (Array.isArray(data) && data[0] === "set-sticky-contacts") {
         if (fired) return;
-
-        // Only react if THIS popup's booking iframe is active
         if (!bookingIframe || !bookingIframe.src) return;
 
         fired = true;
@@ -687,12 +624,10 @@
         if (!popup) return;
         if (window.getComputedStyle(popup).display === "none") return;
 
-        // Move to confirmation step (focus handled by showStep)
         showStep(3);
       }
     });
 
-    // If user returns to step 1, allow submission again later
     if (step1) {
       var obs = new MutationObserver(function () {
         var step1Visible = !step1.classList.contains("d-none");
@@ -715,12 +650,14 @@
   }
 })();
 
-// -----------------------------------------
-// Go Back Button Click (outside IIFE, global)
-// A11Y: Also moves focus back to step 1's heading so screen reader
-// users know they've returned to the location list.
-// -----------------------------------------
+// ============================================================
+// Go Back Button — handles click AND keyboard (Enter/Space)
+// A11Y: The back button is a role="button" div, not a native <button>,
+// so it needs explicit keyboard handling. Also moves focus to step 1's
+// heading so screen reader users know they've returned.
+// ============================================================
 document.addEventListener("DOMContentLoaded", function () {
+  var BACK_BTN_SELECTOR = ".go-backto-loc-listings";
   var FOCUSABLE_FALLBACK =
     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
@@ -748,7 +685,6 @@ document.addEventListener("DOMContentLoaded", function () {
         } catch (e) {}
       }
 
-      // Fallback: first focusable inside the step
       var focusable = Array.from(stepEl.querySelectorAll(FOCUSABLE_FALLBACK)).filter(
         function (el) {
           if (el.closest(".d-none")) return false;
@@ -760,12 +696,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  document.addEventListener("click", function (e) {
-    var backBtn = e.target.closest(".go-backto-loc-listings");
-    if (!backBtn) return;
-
-    e.preventDefault();
-
+  function handleGoBack(backBtn) {
     var root = backBtn.closest(".loc-finder-popup-wrapper");
     if (!root) return;
 
@@ -775,7 +706,29 @@ document.addEventListener("DOMContentLoaded", function () {
     if (step1) step1.classList.remove("d-none");
     if (step2) step2.classList.add("d-none");
 
-    // A11Y: move focus to step 1's heading
     focusStepHeading(step1);
+  }
+
+  // Click handler
+  document.addEventListener("click", function (e) {
+    var backBtn = e.target.closest(BACK_BTN_SELECTOR);
+    if (!backBtn) return;
+
+    e.preventDefault();
+    handleGoBack(backBtn);
   });
+
+  // A11Y: Keyboard handler — Enter/Space on a role="button" div
+  // Must run in capture phase to beat the global popup script's close handler
+  // which also listens for Enter/Space on elements matching .close-popup-loc-finder
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+
+    var backBtn = e.target.closest(BACK_BTN_SELECTOR);
+    if (!backBtn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    handleGoBack(backBtn);
+  }, true); // capture = true
 });
