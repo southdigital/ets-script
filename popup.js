@@ -23,6 +23,10 @@
   // Book button class (no parent dependency — matched via closest in click handler)
   const BOOK_BTN_CLASS = ".book-eval-loc-popup";
 
+  // Focusable selector for picking a fallback focus target
+  const FOCUSABLE =
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+
   // API config
   const NETLIFY_URL =
     "https://etsperformance.netlify.app/.netlify/functions/nearest-locations";
@@ -70,6 +74,75 @@
       if (el2) return el2;
     }
     return null;
+  }
+
+  // ============================================================
+  // A11Y: Focus management for steps
+  // ============================================================
+
+  // Find the heading for a given step (by aria-labelledby id, or first heading)
+  function findStepHeading(stepEl) {
+    if (!stepEl) return null;
+
+    // Prefer the element referenced by aria-labelledby
+    var labelId = stepEl.getAttribute("aria-labelledby");
+    if (labelId) {
+      var labelled = document.getElementById(labelId);
+      if (labelled) return labelled;
+    }
+
+    // Fallback: first heading inside the step
+    return stepEl.querySelector("h1, h2, h3, h4, h5, h6");
+  }
+
+  // Get focusable elements inside a step (skip hidden)
+  function getFocusable(container) {
+    if (!container) return [];
+    return Array.from(container.querySelectorAll(FOCUSABLE)).filter(function (el) {
+      if (el.closest(".d-none")) return false;
+      if (el.offsetParent === null && el.tagName !== "IFRAME") return false;
+      return true;
+    });
+  }
+
+  // Move focus into a step — prefer heading, fall back to first focusable.
+  // Uses requestAnimationFrame so focus happens *after* the browser has applied
+  // the class change that reveals the step (otherwise .d-none blocks focus).
+  function focusStep(stepEl) {
+    if (!stepEl) return;
+
+    requestAnimationFrame(function () {
+      var heading = findStepHeading(stepEl);
+
+      if (heading) {
+        // Ensure heading can receive programmatic focus
+        if (!heading.hasAttribute("tabindex")) {
+          heading.setAttribute("tabindex", "-1");
+        }
+        try {
+          heading.focus({ preventScroll: false });
+          return;
+        } catch (e) {
+          // fall through to focusable fallback
+        }
+      }
+
+      var focusable = getFocusable(stepEl);
+      if (focusable.length) {
+        focusable[0].focus();
+        return;
+      }
+
+      // Last resort — focus the step container itself
+      if (!stepEl.hasAttribute("tabindex")) {
+        stepEl.setAttribute("tabindex", "-1");
+      }
+      try {
+        stepEl.focus();
+      } catch (e) {
+        // nothing more we can do
+      }
+    });
   }
 
   function boot() {
@@ -430,61 +503,79 @@
 
     var currentLocInFlight = false;
 
+    function triggerCurrentLocation() {
+      if (currentLocInFlight) return;
+      currentLocInFlight = true;
+
+      if (!navigator.geolocation) {
+        currentLocInFlight = false;
+        locationDeniedAlert();
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async function (pos) {
+          try {
+            var lat = pos.coords.latitude;
+            var lng = pos.coords.longitude;
+
+            var okUS = await isUSLocation(lat, lng);
+            if (!okUS) {
+              alert(
+                "Current location search is available for US locations only. Please enter a US ZIP code or city."
+              );
+              return;
+            }
+
+            pendingSelection = {
+              source: "coords",
+              q: "",
+              lat: lat,
+              lng: lng,
+            };
+            await runSearchFromPending();
+          } finally {
+            currentLocInFlight = false;
+          }
+        },
+        function () {
+          currentLocInFlight = false;
+          locationDeniedAlert();
+        },
+        { timeout: 15000, maximumAge: 0, enableHighAccuracy: false }
+      );
+    }
+
     if (useCurrentBtn) {
       useCurrentBtn.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
+        triggerCurrentLocation();
+      });
 
-        if (currentLocInFlight) return;
-        currentLocInFlight = true;
-
-        if (!navigator.geolocation) {
-          currentLocInFlight = false;
-          locationDeniedAlert();
-          return;
+      // A11Y: Keyboard support for the role="button" div
+      useCurrentBtn.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          triggerCurrentLocation();
         }
-
-        navigator.geolocation.getCurrentPosition(
-          async function (pos) {
-            try {
-              var lat = pos.coords.latitude;
-              var lng = pos.coords.longitude;
-
-              var okUS = await isUSLocation(lat, lng);
-              if (!okUS) {
-                alert(
-                  "Current location search is available for US locations only. Please enter a US ZIP code or city."
-                );
-                return;
-              }
-
-              pendingSelection = {
-                source: "coords",
-                q: "",
-                lat: lat,
-                lng: lng,
-              };
-              await runSearchFromPending();
-            } finally {
-              currentLocInFlight = false;
-            }
-          },
-          function () {
-            currentLocInFlight = false;
-            locationDeniedAlert();
-          },
-          { timeout: 15000, maximumAge: 0, enableHighAccuracy: false }
-        );
       });
     }
 
     // -----------------------------------------
     // Step helpers
+    // A11Y: After toggling visibility, move focus into the newly visible step
+    // so screen reader users are announced to the new context and keyboard
+    // users continue their flow there.
     // -----------------------------------------
     function showStep(step) {
       if (step1) step1.classList.toggle("d-none", step !== 1);
       if (step2) step2.classList.toggle("d-none", step !== 2);
       if (step3) step3.classList.toggle("d-none", step !== 3);
+
+      var active = step === 1 ? step1 : step === 2 ? step2 : step3;
+      focusStep(active);
     }
 
     function embedBookingForm(formId) {
@@ -566,7 +657,7 @@
       embedBookingForm(formId);
       embedCalendar(calSrc, calId);
 
-      // Move to booking step
+      // Move to booking step (focus handled by showStep)
       showStep(2);
     });
 
@@ -596,6 +687,7 @@
         if (!popup) return;
         if (window.getComputedStyle(popup).display === "none") return;
 
+        // Move to confirmation step (focus handled by showStep)
         showStep(3);
       }
     });
@@ -625,8 +717,49 @@
 
 // -----------------------------------------
 // Go Back Button Click (outside IIFE, global)
+// A11Y: Also moves focus back to step 1's heading so screen reader
+// users know they've returned to the location list.
 // -----------------------------------------
 document.addEventListener("DOMContentLoaded", function () {
+  var FOCUSABLE_FALLBACK =
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+
+  function focusStepHeading(stepEl) {
+    if (!stepEl) return;
+
+    requestAnimationFrame(function () {
+      var labelId = stepEl.getAttribute("aria-labelledby");
+      var target = null;
+
+      if (labelId) {
+        target = document.getElementById(labelId);
+      }
+      if (!target) {
+        target = stepEl.querySelector("h1, h2, h3, h4, h5, h6");
+      }
+
+      if (target) {
+        if (!target.hasAttribute("tabindex")) {
+          target.setAttribute("tabindex", "-1");
+        }
+        try {
+          target.focus({ preventScroll: false });
+          return;
+        } catch (e) {}
+      }
+
+      // Fallback: first focusable inside the step
+      var focusable = Array.from(stepEl.querySelectorAll(FOCUSABLE_FALLBACK)).filter(
+        function (el) {
+          if (el.closest(".d-none")) return false;
+          if (el.offsetParent === null && el.tagName !== "IFRAME") return false;
+          return true;
+        }
+      );
+      if (focusable.length) focusable[0].focus();
+    });
+  }
+
   document.addEventListener("click", function (e) {
     var backBtn = e.target.closest(".go-backto-loc-listings");
     if (!backBtn) return;
@@ -641,5 +774,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (step1) step1.classList.remove("d-none");
     if (step2) step2.classList.add("d-none");
+
+    // A11Y: move focus to step 1's heading
+    focusStepHeading(step1);
   });
 });
