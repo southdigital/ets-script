@@ -664,6 +664,16 @@ function initETSLocationFinder() {
       loc.cardEl.setAttribute('aria-pressed', 'false');
 
       const activate = (e) => {
+        // Let clicks on interactive children (links, buttons, inputs) do their
+        // own thing — e.g. "View Details" should navigate to the details page,
+        // not be hijacked into selecting the location on the map.
+        const interactiveEl = e.target.closest(
+          'a, button, input, select, textarea, [role="link"], [role="button"]'
+        );
+        if (interactiveEl && interactiveEl !== loc.cardEl && loc.cardEl.contains(interactiveEl)) {
+          return;
+        }
+
         e.preventDefault();
         selectLocation(loc.id, {
           flyTo: true,
@@ -677,6 +687,14 @@ function initETSLocationFinder() {
 
       loc.cardEl.addEventListener('click', activate);
       loc.cardEl.addEventListener('keydown', (e) => {
+        // Same guard for keyboard — don't intercept Enter/Space when focus is
+        // on an interactive child like the View Details link.
+        const interactiveEl = e.target.closest(
+          'a, button, input, select, textarea, [role="link"], [role="button"]'
+        );
+        if (interactiveEl && interactiveEl !== loc.cardEl && loc.cardEl.contains(interactiveEl)) {
+          return;
+        }
         if (e.key === 'Enter' || e.key === ' ') {
           activate(e);
         }
